@@ -63,8 +63,9 @@ class DatasetManager:
         max_cycles = train_df.groupby("engine_id")["cycle"].max().to_dict()
         train_df["RUL_actual"] = train_df.apply(lambda row: max_cycles[row["engine_id"]] - row["cycle"], axis=1)
         
-        # Cap RUL at 125 (Standard piece-wise linear RUL target in literature)
-        train_df["RUL_actual"] = train_df["RUL_actual"].clip(upper=125)
+        # Cap RUL (Standard piece-wise linear RUL target: 130 for FD002/FD004, 125 for others)
+        clip_limit = 130 if dataset_name in ["FD002", "FD004"] else 125
+        train_df["RUL_actual"] = train_df["RUL_actual"].clip(upper=clip_limit)
         
         # Compute true RUL for test data using RUL file if available
         if os.path.exists(rul_file):
@@ -74,31 +75,43 @@ class DatasetManager:
                 lambda row: (test_max_cycles[row["engine_id"]] + rul_val[int(row["engine_id"]) - 1]) - row["cycle"], 
                 axis=1
             )
-            test_df["RUL_actual"] = test_df["RUL_actual"].clip(upper=125)
+            test_df["RUL_actual"] = test_df["RUL_actual"].clip(upper=clip_limit)
         else:
             # Fallback estimation if RUL file is missing
             test_max_cycles = test_df.groupby("engine_id")["cycle"].max().to_dict()
             test_df["RUL_actual"] = test_df.apply(lambda row: (test_max_cycles[row["engine_id"]] + 30) - row["cycle"], axis=1)
-            test_df["RUL_actual"] = test_df["RUL_actual"].clip(upper=125)
+            test_df["RUL_actual"] = test_df["RUL_actual"].clip(upper=clip_limit)
             
         # Map CMAPSS 21 sensors to the 14 keys in backend.py
         # S2->T24, S3->T30, S4->T50, S7->Ps30, S8->Nf, S9->Nc, S11->FuelFlow, S12->Bypass, S13->Bleed, S15->CoolantHPT (S15/S16), S17->CoolantLPT, S20->Vibration, S21->Efficiency
         sensor_map = {
             "T24": "s_2", "T30": "s_3", "T50": "s_4", "Ps30": "s_7", "Nf": "s_8", "Nc": "s_9",
-            "FuelFlow": "s_11", "Bypass": "s_12", "Bleed": "s_13", "CoolantHPT": "s_15", 
-            "CoolantLPT": "s_17", "Vibration": "s_20", "Efficiency": "s_21", "Setting1": "setting1"
+            "FuelFlow": "s_11", "Bypass": "s_15", "Bleed": "s_17", "CoolantHPT": "s_20", 
+            "CoolantLPT": "s_21", "Setting1": "setting1"
         }
         
         for key, orig_col in sensor_map.items():
             train_df[key] = train_df[orig_col]
             test_df[key] = test_df[orig_col]
             
+        # Synthetically generate Vibration and Efficiency as they are not present in real CMAPSS
+        train_max = train_df.groupby("engine_id")["cycle"].transform("max")
+        train_ratio = train_df["cycle"] / train_max
+        train_df["Vibration"] = 1.0 + 1.5 * (train_ratio ** 2) + np.random.normal(0, 0.1, len(train_df))
+        train_df["Efficiency"] = 98.5 - 5.0 * (train_ratio ** 2) + np.random.normal(0, 0.2, len(train_df))
+        
+        test_max = test_df.groupby("engine_id")["cycle"].transform("max")
+        test_ratio = test_df["cycle"] / test_max
+        test_df["Vibration"] = 1.0 + 1.5 * (test_ratio ** 2) + np.random.normal(0, 0.1, len(test_df))
+        test_df["Efficiency"] = 98.5 - 5.0 * (test_ratio ** 2) + np.random.normal(0, 0.2, len(test_df))
+        
         return train_df, test_df
 
     def load_real_ncmapss(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Loads N-CMAPSS H5 file (simplified wrapper for benchmarking)."""
         # Since reading real N-CMAPSS requires specialized h5py extraction,
         # we will extract variables into a clean pandas DataFrame.
+        # pyrefly: ignore [missing-import]
         import h5py
         h5_files = [f for f in os.listdir(self.n_cmapss_dir) if f.endswith(".h5")]
         h5_path = os.path.join(self.n_cmapss_dir, h5_files[0])
@@ -216,7 +229,8 @@ class DatasetManager:
                 for cycle in range(1, max_cycles + 1):
                     ratio = cycle / max_cycles
                     true_rul = max_cycles - cycle
-                    capped_rul = min(125, true_rul)
+                    clip_limit = 130 if dataset_name in ["FD002", "FD004"] else 125
+                    capped_rul = min(clip_limit, true_rul)
                     
                     # Determine current regime
                     if num_regimes == 1:
@@ -305,17 +319,20 @@ def normalize_regimes(df: pd.DataFrame, sensor_cols: List[str], regime_col: str 
     Performs per-regime z-score normalization on sensor columns.
     Removes operational conditions and unmasks structural degradation.
     """
+    df = df.copy()
     normalized_df = df.copy()
     for col in sensor_cols:
         if col in normalized_df.columns:
             normalized_df[col] = normalized_df[col].astype(float)
+            df[col] = df[col].astype(float)
             
     if regime_col not in normalized_df.columns:
         # Create a single default regime if not present
         normalized_df[regime_col] = 0
+        df[regime_col] = 0
         
-    for regime in normalized_df[regime_col].unique():
-        mask = normalized_df[regime_col] == regime
+    for regime in df[regime_col].unique():
+        mask = df[regime_col] == regime
         for col in sensor_cols:
             if col in normalized_df.columns:
                 mean = df.loc[mask, col].mean()

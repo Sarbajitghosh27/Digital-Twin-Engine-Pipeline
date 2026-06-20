@@ -11,17 +11,26 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="/static/lucide.min.js"></script>
   
-  <!-- React & ReactDOM CDN -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- React & ReactDOM -->
+  <script src="/static/react.production.min.js"></script>
+  <script src="/static/react-dom.production.min.js"></script>
   
   <!-- Babel Standalone to compile JSX in browser -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="/static/babel.min.js"></script>
+  <script>
+    Babel.registerPreset('custom-preset', {
+      presets: [
+        [Babel.availablePresets['env'], {}],
+        [Babel.availablePresets['react'], { runtime: 'classic' }]
+      ]
+    });
+  </script>
+
   
   <!-- Chart.js for degradation and cycle trends -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/static/chart.js"></script>
   
   <!-- Styling -->
   <link rel="stylesheet" href="/static/style.css">
@@ -37,7 +46,7 @@
   </div>
 
   <!-- App Logic (React JSX) -->
-  <script type="text/babel" src="/static/app.jsx"></script>
+  <script type="text/babel" data-presets="custom-preset" src="/static/app.jsx"></script>
   
 </body>
 </html>

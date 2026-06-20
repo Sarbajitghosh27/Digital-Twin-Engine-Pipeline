@@ -55,3 +55,36 @@ class BayesianLSTM(nn.Module):
             out = self.dropout(last_out)
             
         return self.linear(out)
+
+
+class PlainLSTM(nn.Module):
+    """
+    Standard LSTM for sequence-to-one regression.
+    """
+    def __init__(self, input_dim, hidden_dim, output_dim=1, num_layers=1):
+        super().__init__()
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+        
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        return self.fc(out[:, -1, :])
+
+
+class CNNLSTMModel(nn.Module):
+    """
+    Hybrid CNN-LSTM architecture for feature extraction and temporal modeling.
+    """
+    def __init__(self, input_dim, hidden_dim, output_dim=1):
+        super().__init__()
+        self.conv = nn.Conv1d(in_channels=input_dim, out_channels=32, kernel_size=3, padding=1)
+        self.lstm = nn.LSTM(32, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+        
+    def forward(self, x):
+        # x: (batch, seq, feat) -> (batch, feat, seq)
+        x = x.transpose(1, 2)
+        x = F.relu(self.conv(x))
+        x = x.transpose(1, 2)
+        _, (h_n, _) = self.lstm(x)
+        return self.fc(h_n[-1])
