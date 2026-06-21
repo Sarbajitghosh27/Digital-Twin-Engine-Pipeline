@@ -265,7 +265,7 @@ def get_or_train_models(
             print(f"[checkpoints] Load failed, falling back to training: {e}")
             
     print(f"[checkpoints] Checkpoint not found or training forced. Training {dataset_name} from scratch (seed {seed})...")
-    train_df, _ = dm.get_dataset("FD001" if dataset_name.startswith("FD") else dataset_name)
+    train_df, _ = dm.get_dataset(dataset_name)
     train_df = train_df.ffill().bfill()
     
     ae_model, lstm_model, ae_threshold, mean_recon_err, t_mean, t_std = train_pipeline(

@@ -265,6 +265,8 @@ def run_evaluation(
     lstm_model: BayesianLSTM,
     ae_threshold: float,
     dm: DatasetManager,
+    t_mean: np.ndarray,
+    t_std: np.ndarray,
     n_mc_samples: int = 50,
     window_size: int = 30
 ) -> Tuple[float, float, float, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, pd.DataFrame]:
@@ -284,10 +286,8 @@ def run_evaluation(
         regime_col="regime" if "regime" in test_df.columns else "Setting1"
     )
 
-    X_raw = norm_test[sensor_list].values
-    mean_val = X_raw.mean(axis=0)
-    std_val = X_raw.std(axis=0)
-    std_val[std_val == 0] = 1.0
+    mean_val = t_mean
+    std_val = t_std
 
     ae_model.eval()
     ae_criterion = nn.MSELoss()
@@ -412,7 +412,7 @@ def run_fine_tuning_eval(
             optimizer.step()
             
     rmse, score, _, _, _, _, _, _, _ = run_evaluation(
-        target_dataset, ae_model, lstm_ft, ae_threshold, dm, window_size=window_size
+        target_dataset, ae_model, lstm_ft, ae_threshold, dm, target_mean, target_std, window_size=window_size
     )
     return rmse, score
 
@@ -451,7 +451,7 @@ def generate_benchmark_tables() -> Dict[str, Any]:
         for target in targets:
             print(f"Evaluating transfer FD001 -> {target}...")
             rmse, score, picp, sharpness, pred_means, pred_stds, y_true, X_t, norm_test = run_evaluation(
-                target, ae_model, lstm_model, ae_threshold, dm
+                target, ae_model, lstm_model, ae_threshold, dm, t_mean, t_std
             )
             metrics[target]["rmse"].append(rmse)
             metrics[target]["score"].append(score)
@@ -530,39 +530,18 @@ def generate_benchmark_tables() -> Dict[str, Any]:
     # Compares proposed model errors against PlainLSTM errors on FD001 (seed 42)
     p_value = 1.0
     try:
-        # Load PlainLSTM predictions on FD001
-        from aiml_core.baselines import _prepare_raw_sensor_windows, _train_and_eval_model
-        from aiml_core.models import PlainLSTM
-        train_df, test_df = dm.get_dataset("FD001")
-        train_df = train_df.ffill().bfill()
-        test_df = test_df.ffill().bfill()
-        norm_train = normalize_regimes(train_df, CMAPSS_SENSORS)
-        norm_test = normalize_regimes(test_df, CMAPSS_SENSORS)
-        
-        # Scaling
-        mean_s = norm_train[CMAPSS_SENSORS].values.mean(axis=0)
-        std_s = norm_train[CMAPSS_SENSORS].values.std(axis=0)
-        std_s[std_s == 0] = 1.0
-        norm_train[CMAPSS_SENSORS] = (norm_train[CMAPSS_SENSORS].values - mean_s) / std_s
-        norm_test[CMAPSS_SENSORS] = (norm_test[CMAPSS_SENSORS].values - mean_s) / std_s
-        
-        X_tr, Y_tr = _prepare_raw_sensor_windows(norm_train, CMAPSS_SENSORS)
-        X_te, Y_te = _prepare_raw_sensor_windows(norm_test, CMAPSS_SENSORS)
-        
-        model_pl = PlainLSTM(input_dim=len(CMAPSS_SENSORS), hidden_dim=32).to(device)
-        # Train for a few epochs
-        _train_and_eval_model(model_pl, X_tr, Y_tr, X_te, Y_te, epochs=5, seed=42)
-        
-        model_pl.eval()
-        with torch.no_grad():
-            baseline_preds = model_pl(torch.FloatTensor(X_te).to(device)).cpu().numpy().flatten()
+        if baseline_results and "PlainLSTM" in baseline_results and "predictions_seed_42" in baseline_results["PlainLSTM"]:
+            baseline_preds = baseline_results["PlainLSTM"]["predictions_seed_42"]
+            assert len(primary_pred_means) == len(baseline_preds), f"Length mismatch: proposed ({len(primary_pred_means)}) vs baseline ({len(baseline_preds)})"
             
-        proposed_abs_err = np.abs(primary_pred_means - Y_te.flatten()[:len(primary_pred_means)])
-        baseline_abs_err = np.abs(baseline_preds[:len(primary_pred_means)] - Y_te.flatten()[:len(primary_pred_means)])
-        
-        res = wilcoxon(proposed_abs_err, baseline_abs_err, alternative='less')
-        p_value = float(res.pvalue)
-        print(f"[benchmark] Wilcoxon paired significance p-value: {p_value:.6e}")
+            proposed_abs_err = np.abs(primary_pred_means - primary_y_true)
+            baseline_abs_err = np.abs(baseline_preds - primary_y_true)
+            
+            res = wilcoxon(proposed_abs_err, baseline_abs_err, alternative='less')
+            p_value = float(res.pvalue)
+            print(f"[benchmark] Wilcoxon paired significance p-value: {p_value:.6e}")
+        else:
+            print("[benchmark] Baseline results or seed 42 predictions not found, skipping Wilcoxon test.")
     except Exception as e:
         print(f"[benchmark] Significance test failed: {e}")
 

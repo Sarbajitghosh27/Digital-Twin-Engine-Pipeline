@@ -126,3 +126,4 @@ dmypy.json
 
 # Custom project paths
 data/
+checkpoints/

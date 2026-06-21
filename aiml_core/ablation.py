@@ -167,7 +167,7 @@ def run_hi_ablation(
     
     # Run evaluation and unpack all 9 elements
     rmse_hi, score_hi, picp, sharpness, pred_means, pred_stds, y_true, X_lstm_t, norm_test_ret = run_evaluation(
-        "FD001", ae_model, lstm_hi, ae_threshold, dm, window_size=CONFIG["window_size"]
+        "FD001", ae_model, lstm_hi, ae_threshold, dm, t_mean, t_std, window_size=CONFIG["window_size"]
     )
 
     print("[ablation] Training Variant B: Raw sensor LSTM (no HI)...")
@@ -220,7 +220,7 @@ def run_window_size_ablation(
             )
             # Evaluate using same window size
             rmse, score, picp, sharpness, pred_means, pred_stds, y_true, X_lstm_t, norm_test_ret = run_evaluation(
-                "FD001", ae_model, lstm_model, ae_threshold, dm, window_size=w
+                "FD001", ae_model, lstm_model, ae_threshold, dm, t_mean, t_std, window_size=w
             )
             results.append({
                 "window_size": w,
