@@ -972,3 +972,245 @@ header .branding span.subtitle {
   border-radius: 50%;
   animation: fan-spin 1s linear infinite;
 }
+
+/* Tab selector for Operations vs Research View */
+.view-selector-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(77, 96, 124, 0.3);
+  border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.view-selector-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+.view-selector-tab:hover {
+  color: var(--accent-cyan);
+  background: rgba(0, 240, 255, 0.05);
+}
+
+.view-selector-tab.active {
+  background: var(--accent-blue);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(0, 136, 255, 0.4);
+}
+
+/* Operations Heatmap / Grid View */
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.fleet-engine-cell {
+  background: rgba(16, 24, 48, 0.5);
+  border: 1px solid rgba(77, 96, 124, 0.2);
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+  position: relative;
+}
+
+.fleet-engine-cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+  border-color: var(--accent-cyan);
+}
+
+.fleet-engine-cell.active {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 136, 255, 0.15);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.fleet-cell-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 6px;
+}
+
+.fleet-cell-metric {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.fleet-cell-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Inline top-3 drivers chips in Alert feed */
+.driver-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.driver-chip {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(0, 240, 255, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+}
+
+.driver-chip.critical {
+  background: rgba(255, 51, 85, 0.15);
+  color: var(--accent-red);
+  border-color: rgba(255, 51, 85, 0.25);
+}
+
+/* Model Card styling */
+.model-card {
+  background: rgba(6, 10, 19, 0.5);
+  border: 1px solid rgba(77, 96, 124, 0.25);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-card h4 {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+  border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  padding-bottom: 4px;
+  font-size: 13px;
+}
+
+.model-card-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.model-card-key {
+  color: var(--text-muted);
+}
+
+.model-card-val {
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+/* Research Tab layout */
+.research-layout {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .research-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.research-plots-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@media (max-width: 800px) {
+  .research-plots-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.research-plot-card {
+  background: rgba(13, 19, 34, 0.4);
+  border: 1px solid rgba(77, 96, 124, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.research-plot-img {
+  max-width: 100%;
+  max-height: 250px;
+  object-fit: contain;
+  margin-top: 8px;
+  border-radius: 4px;
+}
+
+.copy-btn {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-end;
+  transition: all var(--transition-fast);
+}
+
+.copy-btn:hover {
+  background: var(--accent-cyan);
+  color: #060a13;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
+/* Honest dataset badges */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ds-badge.real {
+  background: rgba(0, 230, 118, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+}
+
+.ds-badge.synthetic {
+  background: rgba(255, 140, 0, 0.15);
+  color: var(--accent-orange);
+  border: 1px solid rgba(255, 140, 0, 0.3);
+}
+

@@ -21,6 +21,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aiml_core.models import LSTMAutoencoder, BayesianLSTM
 from aiml_core.explainers import PMAExplainer
 from aiml_core.data_loader import DatasetManager, normalize_regimes, prepare_sliding_windows, CMAPSS_SENSORS, NCMAPSS_SENSORS
+from aiml_core.config import CONFIG
+from aiml_core.train_utils import get_or_train_models
 from aiml_core.benchmark import generate_benchmark_tables, compute_nasa_score, mc_dropout_predict, compute_calibration_metrics
 
 app = FastAPI(title="Prognostics Digital Twin API")
@@ -124,7 +126,7 @@ class EngineTwinState:
 engines_db: Dict[int, EngineTwinState] = {}
 
 def initialize_models_and_data(dataset_name: str):
-    """Loads dataset and trains the Autoencoder, Bayesian LSTM, and Isolation Forest on the fly."""
+    """Loads dataset and loads pre-trained checkpoints (or trains them if missing)."""
     global ACTIVE_DATASET, train_df_global, test_df_global, ae_model, lstm_model, mean_recon_err, ae_threshold, anomaly_model, test_sensor_mean, test_sensor_std, engines_db
     
     ACTIVE_DATASET = dataset_name
@@ -140,7 +142,6 @@ def initialize_models_and_data(dataset_name: str):
     
     sensor_list = CMAPSS_SENSORS
     if dataset_name == "N-CMAPSS_DS01":
-        # Overlapping sensors mapped for evaluation
         test_df["FuelFlow"] = test_df["wf"]
         test_df["Setting1"] = test_df["alt"] / 50000.0
         train_df["FuelFlow"] = train_df["wf"]
@@ -148,112 +149,21 @@ def initialize_models_and_data(dataset_name: str):
         
     print("Fitting operating condition normalizer...")
     norm_train = normalize_regimes(train_df, sensor_list, regime_col="regime" if "regime" in train_df.columns else "Setting1")
-    norm_test = normalize_regimes(test_df, sensor_list, regime_col="regime" if "regime" in test_df.columns else "Setting1")
     
-    # Calculate test_sensor_mean and test_sensor_std using raw train_df before normalization
-    X_train_raw = train_df[sensor_list].values
-    test_sensor_mean = X_train_raw.mean(axis=0)
-    test_sensor_std = X_train_raw.std(axis=0)
-    test_sensor_std[test_sensor_std == 0.0] = 1.0
+    # 1. Load/train AE and LSTM models using get_or_train_models with seed=42 (default for dashboard)
+    ae_model, lstm_model, ae_threshold, mean_recon_err, test_sensor_mean, test_sensor_std = get_or_train_models(
+        dataset_name, seed=42, dm=dm, force_retrain=False
+    )
     
-    # 1. Fit Anomaly Detection (Isolation Forest) on first 50 cycles of training data (healthy engine states)
+    # 2. Fit Anomaly Detection (Isolation Forest) on first 50 cycles of training data (healthy engine states)
     print("Fitting Isolation Forest Anomaly Scorer...")
     healthy_data = norm_train[norm_train["cycle"] <= 50][sensor_list].values
     if len(healthy_data) == 0:
         healthy_data = norm_train[sensor_list].values
-    # Fit standard Isolation Forest
     anomaly_model = IsolationForest(n_estimators=30, contamination=0.05, random_state=42)
     anomaly_model.fit(healthy_data)
     
-    # 2. Fit Autoencoder for Health Index
-    print("Fitting Autoencoder for Health Index...")
-    early_df = norm_train[norm_train["cycle"] <= 50].copy()
-    early_norm = early_df[sensor_list].values
-    
-    ae_sequences = []
-    for engine_id in early_df["engine_id"].unique():
-        eng_data = norm_train[norm_train["engine_id"] == engine_id].sort_values("cycle")[sensor_list].values
-        eng_norm = eng_data
-        if len(eng_norm) >= 30:
-            for i in range(len(eng_norm) - 30 + 1):
-                ae_sequences.append(eng_norm[i : i + 30])
-                
-    ae_sequences = np.array(ae_sequences)
-    if len(ae_sequences) == 0:
-        ae_sequences = np.random.normal(0, 1, (100, 30, len(sensor_list)))
-        
-    ae_model = LSTMAutoencoder(input_dim=len(sensor_list), hidden_dim=8).to(device)
-    ae_opt = torch.optim.Adam(ae_model.parameters(), lr=0.01)
-    ae_criterion = nn.MSELoss()
-    
-    ae_model.train()
-    X_ae_t = torch.FloatTensor(ae_sequences).to(device)
-    for epoch in range(3): # Fast 3 epochs training on startup
-        ae_opt.zero_grad()
-        recon = ae_model(X_ae_t)
-        loss = ae_criterion(recon, X_ae_t)
-        loss.backward()
-        ae_opt.step()
-        
-    ae_model.eval()
-    with torch.no_grad():
-        recon_base = ae_model(X_ae_t)
-        mean_recon_err = float(ae_criterion(recon_base, X_ae_t).item())
-        ae_threshold = max(0.01, mean_recon_err * 2.0)
-        
-    # 3. Compute HI sequence and fit Bayesian LSTM
-    print("Computing Health Index and training Bayesian LSTM...")
-    sample_hi_vals = []
-    err_offset = mean_recon_err * 0.95
-    for engine_id in train_df["engine_id"].unique():
-        eng_df = norm_train[norm_train["engine_id"] == engine_id].sort_values("cycle").copy()
-        eng_norm = eng_df[sensor_list].values
-        
-        hi_list = []
-        for i in range(len(eng_norm)):
-            if i < 29:
-                hi_list.append(100.0)
-            else:
-                window = eng_norm[i - 29 : i + 1]
-                window_t = torch.FloatTensor(window).unsqueeze(0).to(device)
-                with torch.no_grad():
-                    recon_w = ae_model(window_t)
-                    err = float(ae_criterion(recon_w, window_t).item())
-                hi = 100.0 * np.exp(-max(0.0, err - err_offset) / ae_threshold)
-                hi_list.append(hi)
-                
-        if engine_id == 1:
-            sample_hi_vals = hi_list[:10]
-            
-        norm_train.loc[norm_train["engine_id"] == engine_id, "HI"] = hi_list
-        
-    print(f"AE Threshold: {ae_threshold:.6f}, Mean Recon Error: {mean_recon_err:.6f}")
-    print(f"Sample HI values (first 10 of Engine 1): {[round(x, 2) for x in sample_hi_vals]}")
-        
-    X_lstm, Y_lstm = prepare_sliding_windows(norm_train, ["HI"], window_size=30)
-    
-    lstm_model = BayesianLSTM(input_dim=1, hidden_dim=16, output_dim=1).to(device)
-    lstm_opt = torch.optim.Adam(lstm_model.parameters(), lr=0.01)
-    lstm_criterion = nn.MSELoss()
-    
-    lstm_model.train()
-    X_lstm_t = torch.FloatTensor(X_lstm).to(device)
-    Y_lstm_t = torch.FloatTensor(Y_lstm).to(device)
-    
-    # 3 quick training epochs
-    batch_size = 64
-    for epoch in range(3):
-        permutation = torch.randperm(X_lstm_t.size(0))
-        for i in range(0, X_lstm_t.size(0), batch_size):
-            indices = permutation[i:i+batch_size]
-            batch_x, batch_y = X_lstm_t[indices], Y_lstm_t[indices]
-            lstm_opt.zero_grad()
-            pred = lstm_model(batch_x, mc_dropout=False)
-            loss = lstm_criterion(pred, batch_y)
-            loss.backward()
-            lstm_opt.step()
-            
-    # Reset simulation engines database
+    # 3. Reset simulation engines database
     engines_db.clear()
     engine_ids = test_df["engine_id"].unique()
     for eid in engine_ids[:20]: # Limit fleet to 20 engines for UI speed
@@ -742,23 +652,30 @@ def post_sim_control(control: dict):
 
 # Benchmark execution API
 @app.get("/api/research/benchmark")
-def get_benchmark_results():
-    """Triggers the cross-dataset transfer generalization benchmark suite.
+async def get_benchmark_results():
+    """Triggers the cross-dataset transfer generalization benchmark suite off the event loop.
     Returns all research metrics: RMSE, NASA Score, PICP, Sharpness, PMA AUDC,
     baseline comparisons, ablation results, and calibration reliability data.
     """
+    loop = asyncio.get_event_loop()
+    def _run():
+        return generate_benchmark_tables()
     try:
-        results = generate_benchmark_tables()
+        results = await loop.run_in_executor(_thread_pool, _run)
         return {
             "status": "success",
             "latex": results["latex"],
             "markdown": results["markdown"],
             "results": results["results"],
+            "p_value": results.get("p_value", 1.0),
             "reliability_data": results.get("reliability_data", {}),
             "pma_attributions": results.get("pma_attributions", {}),
             "faithfulness": results.get("faithfulness", {}),
             "baselines": results.get("baselines", {}),
-            "ablation": results.get("ablation", {})
+            "ablation": results.get("ablation", {}),
+            "seeds": results.get("seeds", []),
+            "epochs": results.get("epochs", 0),
+            "window_size": results.get("window_size", 30)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Benchmark execution failed: {e}")

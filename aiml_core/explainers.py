@@ -1,6 +1,5 @@
 import numpy as np
-import torch
-from typing import Callable, Dict, List, Any
+from typing import Callable
 
 class PMAExplainer:
     """
@@ -8,6 +7,10 @@ class PMAExplainer:
     An additive, SHAP-like explainer designed for sensor timeseries and tabular predictions.
     Computes attributions by replacing each feature with its healthy baseline value and 
     scaling the marginal changes to sum exactly to the prediction difference.
+    
+    Note: While PMA satisfies the efficiency (additivity) axiom by construction, it is 
+    not mathematically proven to satisfy the full set of Shapley axioms (such as symmetry 
+    and dummy/null player axioms).
     """
     def __init__(self, model_func: Callable[[np.ndarray], float], baseline_state: np.ndarray):
         """

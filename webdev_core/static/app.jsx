@@ -10,39 +10,40 @@ const Icon = ({ name, className = "" }) => {
   return <i data-lucide={name} className={className}></i>;
 };
 
-// Global config for sensor names and units
+// Global config for sensor names and units — 14 literature-standard CMAPSS sensors (no Vibration/Efficiency)
 const SENSOR_METADATA = {
-  "T24": { label: "LPC Outlet Temp", unit: "K", threshold: 646.0 },
-  "T30": { label: "HPC Outlet Temp", unit: "K", threshold: 1610.0 },
-  "T50": { label: "LPT Outlet Temp", unit: "K", threshold: 1430.0 },
-  "Ps30": { label: "HPC Outlet Press", unit: "psia", threshold: 546.0, reverse: true },
-  "Nf": { label: "Physical Fan Speed", unit: "rpm", threshold: 2386.0, reverse: true },
-  "Nc": { label: "Physical Core Speed", unit: "rpm", threshold: 9110.0 },
-  "FuelFlow": { label: "Fuel Flow Ratio", unit: "pps", threshold: 513.0, reverse: true },
-  "Bypass": { label: "Bypass Ratio", unit: "ratio", threshold: 8.8 },
-  "Bleed": { label: "Bleed Enthalpy", unit: "h", threshold: 398.0 },
-  "CoolantHPT": { label: "HPT Coolant Bleed", unit: "pps", threshold: 37.0, reverse: true },
-  "CoolantLPT": { label: "LPT Coolant Bleed", unit: "pps", threshold: 22.2, reverse: true },
-  "Vibration": { label: "Chassis Vibration", unit: "mm/s", threshold: 3.0 },
-  "Efficiency": { label: "Polytropic Effic.", unit: "%", threshold: 92.0, reverse: true },
-  "Setting1": { label: "Alt. Setting", unit: "k-ft", threshold: 45.0 },
-  
-  // N-CMAPSS extra sensors
-  "alt": { label: "Flight Altitude", unit: "ft", threshold: 35000.0 },
-  "Mach": { label: "Mach Number", unit: "Mach", threshold: 0.8 },
-  "TRA": { label: "Throttle Angle", unit: "deg", threshold: 85.0 },
-  "T2": { label: "Inlet Total Temp", unit: "K", threshold: 288.0 },
-  "T48": { label: "HPT Outlet Temp", unit: "K", threshold: 1250.0 },
-  "P2": { label: "Inlet Total Press", unit: "psia", threshold: 14.7, reverse: true },
-  "P15": { label: "Bypass Press", unit: "psia", threshold: 17.0 },
-  "P30": { label: "HPC Inlet Press", unit: "psia", threshold: 310.0 },
-  "wf": { label: "Fuel Flow Rate", unit: "pps", threshold: 8.5 },
-  "T40": { label: "Burner Outlet Temp", unit: "K", threshold: 1850.0 },
-  "T90": { label: "Exhaust Temp", unit: "K", threshold: 580.0 },
-  "Nf_d": { label: "Demanded Fan Speed", unit: "rpm", threshold: 2400.0 },
-  "Nc_d": { label: "Demanded Core Speed", unit: "rpm", threshold: 9150.0 },
-  "Setting2": { label: "Mach Setting", unit: "Mach", threshold: 0.0003 },
-  "Setting3": { label: "TRA Setting", unit: "deg", threshold: 100.0 }
+  // ── 14 CMAPSS literature-standard sensors ──────────────────────────────
+  "T24":          { label: "LPC Outlet Temp",     unit: "K",    threshold: 646.0 },
+  "T30":          { label: "HPC Outlet Temp",     unit: "K",    threshold: 1610.0 },
+  "T50":          { label: "LPT Outlet Temp",     unit: "K",    threshold: 1430.0 },
+  "P30":          { label: "HPC Outlet Press",    unit: "psia", threshold: 600.0 },
+  "Nf":           { label: "Physical Fan Speed",  unit: "rpm",  threshold: 2386.0, reverse: true },
+  "Nc":           { label: "Physical Core Speed", unit: "rpm",  threshold: 9110.0 },
+  "Ps30":         { label: "HPC Static Press",    unit: "psia", threshold: 546.0, reverse: true },
+  "phi":          { label: "Fuel-Air Ratio",      unit: "pps",  threshold: 540.0, reverse: true },
+  "NRf":          { label: "Fan Speed Ratio",     unit: "rpm",  threshold: 2390.0, reverse: true },
+  "NRc":          { label: "Core Speed Ratio",    unit: "rpm",  threshold: 8200.0 },
+  "BPR":          { label: "Bypass Ratio",        unit: "ratio",threshold: 8.8 },
+  "htBleed":      { label: "Bleed Enthalpy",      unit: "h",    threshold: 400.0 },
+  "HPT_coolant":  { label: "HPT Coolant Bleed",   unit: "pps",  threshold: 40.0, reverse: true },
+  "LPT_coolant":  { label: "LPT Coolant Bleed",   unit: "pps",  threshold: 24.0, reverse: true },
+  // ── Operating condition proxy ───────────────────────────────────────────
+  "Setting1":     { label: "Alt. Setting",        unit: "k-ft", threshold: 45.0 },
+  // ── N-CMAPSS extra sensors ──────────────────────────────────────────────
+  "alt":          { label: "Flight Altitude",     unit: "ft",   threshold: 35000.0 },
+  "Mach":         { label: "Mach Number",         unit: "Mach", threshold: 0.8 },
+  "TRA":          { label: "Throttle Angle",      unit: "deg",  threshold: 85.0 },
+  "T2":           { label: "Inlet Total Temp",    unit: "K",    threshold: 288.0 },
+  "T48":          { label: "HPT Outlet Temp",     unit: "K",    threshold: 1250.0 },
+  "P2":           { label: "Inlet Total Press",   unit: "psia", threshold: 14.7, reverse: true },
+  "P15":          { label: "Bypass Press",        unit: "psia", threshold: 17.0 },
+  "wf":           { label: "Fuel Flow Rate",      unit: "pps",  threshold: 8.5 },
+  "T40":          { label: "Burner Outlet Temp",  unit: "K",    threshold: 1850.0 },
+  "T90":          { label: "Exhaust Temp",        unit: "K",    threshold: 580.0 },
+  "Nf_d":         { label: "Demanded Fan Speed",  unit: "rpm",  threshold: 2400.0 },
+  "Nc_d":         { label: "Demanded Core Speed", unit: "rpm",  threshold: 9150.0 },
+  "Setting2":     { label: "Mach Setting",        unit: "Mach", threshold: 0.0003 },
+  "Setting3":     { label: "TRA Setting",         unit: "deg",  threshold: 100.0 }
 };
 
 // Fill in placeholders for N-CMAPSS AuxSensors
@@ -268,6 +269,8 @@ function App() {
   const [engines, setEngines] = useState([]);
   const [isDatasetLoading, setIsDatasetLoading] = useState(false);
   const [sensorLimits, setSensorLimits] = useState(null);
+  const [dataSourceMap, setDataSourceMap] = useState({});  // Track real vs synthetic per dataset
+  const [fleetSortKey, setFleetSortKey] = useState("engine_id"); // For sortable fleet heatmap
   
   const [fleetSummary, setFleetSummary] = useState({
     total_engines: 0,
@@ -287,14 +290,14 @@ function App() {
   // Research Benchmark states
   const [isBenchmarking, setIsBenchmarking] = useState(false);
   const [benchmarkData, setBenchmarkData] = useState(null);
-  const [activeResearchTab, setActiveResearchTab] = useState("table"); // table, latex, shap, calibration, faithfulness, ablation
+  const [activeResearchTab, setActiveResearchTab] = useState("table"); // table, latex, shap, calibration, faithfulness, ablation, modelcard
   
-  // Custom manual IoT Ingest form state
+  // Custom manual IoT Ingest form state — using real 14-sensor CMAPSS fields
   const [iotForm, setIotForm] = useState({
     cycle: 120,
     T30: 1600.0,
-    Vibration: 2.1,
-    Efficiency: 95.0,
+    T50: 1400.0,
+    Ps30: 47.0,
     HPT_Health: 85.0
   });
 
@@ -303,6 +306,24 @@ function App() {
   const [isIotActive, setIsIotActive] = useState(false);
 
   const socketRef = useRef(null);
+
+  // Helper: transform backend benchmark results dict to sorted array for rendering
+  const getBenchmarkResultsArray = (benchData) => {
+    if (!benchData || !benchData.results) return [];
+    const res = benchData.results;
+    return Object.keys(res).map(target => ({
+      target,
+      source: "FD001",
+      rmse: res[target].rmse ? res[target].rmse.mean : null,
+      rmse_str: res[target].rmse ? res[target].rmse.str : "—",
+      score: res[target].score ? res[target].score.mean : null,
+      score_str: res[target].score ? res[target].score.str : "—",
+      picp: res[target].picp ? res[target].picp.mean : null,
+      sharpness: res[target].sharpness ? res[target].sharpness.mean : null,
+      ft_rmse_str: res[target].ft_rmse ? res[target].ft_rmse.str : "—",
+      data_source: res[target].data_source || "synthetic"
+    }));
+  };
 
   // Load sensor limits config JSON
   useEffect(() => {
@@ -402,11 +423,55 @@ function App() {
       const res = await fetch("http://localhost:8000/api/research/benchmark");
       const data = await res.json();
       setBenchmarkData(data);
+      // Update data source map from benchmark results
+      if (data.results) {
+        const newMap = {};
+        Object.entries(data.results).forEach(([ds, r]) => {
+          newMap[ds] = r.data_source || "synthetic";
+        });
+        setDataSourceMap(prev => ({ ...prev, ...newMap }));
+      }
       setIsBenchmarking(false);
     } catch (err) {
       console.error("Error running benchmark: ", err);
       setIsBenchmarking(false);
     }
+  };
+
+  // Step engine cycle forward or backward by 1
+  const handleCycleStep = async (direction) => {
+    if (!engineStatus) return;
+    const nextCycle = Math.max(1, Math.min(engineStatus.max_cycles, engineStatus.current_cycle + direction));
+    await handleControlSim("pause");
+    try {
+      const res = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/cycle/${nextCycle}`, { method: "POST" });
+      const statusData = await res.json();
+      setEngineStatus(statusData);
+      const histRes = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/history?cycle=${nextCycle}`);
+      setHistory(await histRes.json());
+      const predRes = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/prediction`);
+      setFuturePredictions(await predRes.json());
+    } catch (err) {
+      console.error("Error stepping cycle:", err);
+    }
+  };
+
+  // Copy to clipboard helpers
+  const handleCopyLatex = () => {
+    if (benchmarkData && benchmarkData.latex) {
+      navigator.clipboard.writeText(benchmarkData.latex);
+    }
+  };
+
+  const handleExportMarkdown = () => {
+    if (!benchmarkData || !benchmarkData.markdown) return;
+    const blob = new Blob([benchmarkData.markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'benchmark_results.md';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Triggered when active engine is changed
@@ -498,7 +563,7 @@ function App() {
     }
   };
 
-  // Submit manual IoT Telemetry Ingestion
+  // Submit manual IoT Telemetry Ingestion (using real CMAPSS sensor fields)
   const handleIotSubmit = async (e) => {
     e.preventDefault();
     await handleControlSim("pause");
@@ -506,15 +571,18 @@ function App() {
     if (!engineStatus) return;
 
     const mockSensors = { ...engineStatus.sensors };
+    // Only override with real CMAPSS sensor values from the form
     mockSensors["T30"] = parseFloat(iotForm.T30);
-    mockSensors["Vibration"] = parseFloat(iotForm.Vibration);
-    mockSensors["Efficiency"] = parseFloat(iotForm.Efficiency);
+    mockSensors["T50"] = parseFloat(iotForm.T50);
+    mockSensors["Ps30"] = parseFloat(iotForm.Ps30);
 
     const mockComponents = { ...engineStatus.components };
     mockComponents["HPT"] = parseFloat(iotForm.HPT_Health);
 
     const remaining = Math.max(0, engineStatus.max_cycles - parseInt(iotForm.cycle));
-    const anomaly = parseFloat(((100 - iotForm.HPT_Health) * 1.2 + (iotForm.Vibration - 1.0) * 20).toFixed(2));
+    // Anomaly driven by component health + T50 elevation vs baseline
+    const t50_excess = Math.max(0, parseFloat(iotForm.T50) - 1400.0) / 30.0 * 15.0;
+    const anomaly = parseFloat(((100 - parseFloat(iotForm.HPT_Health)) * 0.8 + t50_excess).toFixed(2));
     const prob = parseFloat((100 / (1 + Math.exp((remaining - 20) / 10))).toFixed(2));
 
     const payload = {
@@ -572,17 +640,32 @@ function App() {
           </div>
         </div>
         
-        {/* DATASET SELECTOR */}
+        {/* DATASET SELECTOR WITH REAL/SYNTHETIC BADGES */}
         <div className="dataset-tabs">
-          {["FD001", "FD002", "FD003", "FD004", "N-CMAPSS_DS01"].map(ds => (
-            <button 
-              key={ds}
-              className={`tab-btn ${activeDataset === ds ? 'active' : ''}`}
-              onClick={() => handleDatasetChange(ds)}
-            >
-              {ds === "N-CMAPSS_DS01" ? "N-CMAPSS" : ds}
-            </button>
-          ))}
+          {["FD001", "FD002", "FD003", "FD004", "N-CMAPSS_DS01"].map(ds => {
+            const src = dataSourceMap[ds];
+            return (
+              <button 
+                key={ds}
+                className={`tab-btn ${activeDataset === ds ? 'active' : ''}`}
+                onClick={() => handleDatasetChange(ds)}
+                style={{ position: 'relative' }}
+              >
+                {ds === "N-CMAPSS_DS01" ? "N-CMAPSS" : ds}
+                {src && (
+                  <span style={{
+                    fontSize: '7px', padding: '1px 4px', borderRadius: '2px', marginLeft: '5px',
+                    background: src === 'real' ? 'rgba(0,255,100,0.15)' : 'rgba(255,140,0,0.15)',
+                    border: `1px solid ${src === 'real' ? '#00c853' : '#ff8c00'}`,
+                    color: src === 'real' ? '#00c853' : '#ff8c00',
+                    fontFamily: 'var(--font-mono)', letterSpacing: '0.3px'
+                  }}>
+                    {src === 'real' ? '● REAL' : '○ SIM'}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         
         <div className="toolbar-controls">
@@ -638,6 +721,23 @@ function App() {
               title="Pause Simulation"
             >
               <Icon name="pause" /> Pause
+            </button>
+            {/* ±1 Cycle Step Controls */}
+            <button
+              className="btn"
+              onClick={() => handleCycleStep(-1)}
+              title="Step back 1 cycle"
+              disabled={!engineStatus}
+            >
+              <Icon name="skip-back" /> -1
+            </button>
+            <button
+              className="btn"
+              onClick={() => handleCycleStep(1)}
+              title="Step forward 1 cycle"
+              disabled={!engineStatus}
+            >
+              <Icon name="skip-forward" /> +1
             </button>
             <button className="btn" onClick={() => handleControlSim("reset")} title="Reset All Engines to Cycle 1">
               <Icon name="rotate-ccw" /> Reset
@@ -832,7 +932,7 @@ function App() {
               )}
             </div>
 
-            {/* TELEMETRY INGESTION PANEL (IOT DECK) */}
+            {/* TELEMETRY INGESTION PANEL (IOT DECK) — uses real CMAPSS 14-sensor fields */}
             <div style={{ width: '100%', borderTop: '1px solid rgba(77,96,124,0.2)', paddingTop: '10px' }}>
               <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1.2px', marginBottom: '6px' }}>
                 <Icon name="radio" /> Stream Ingestion Override (IoT Ingest)
@@ -847,7 +947,7 @@ function App() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>T30 (HPC Temp)</label>
+                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>T30 — HPC Outlet Temp (K)</label>
                   <input 
                     type="number" 
                     step="0.1" 
@@ -856,19 +956,29 @@ function App() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Vibration Index</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={iotForm.Vibration} 
-                    onChange={(e) => setIotForm({ ...iotForm, Vibration: e.target.value })} 
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>HPT Health %</label>
+                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>T50 — LPT Outlet Temp (K)</label>
                   <input 
                     type="number" 
                     step="0.1" 
+                    value={iotForm.T50} 
+                    onChange={(e) => setIotForm({ ...iotForm, T50: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Ps30 — HPC Static Press (psia)</label>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    value={iotForm.Ps30} 
+                    onChange={(e) => setIotForm({ ...iotForm, Ps30: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>HPT Component Health %</label>
+                  <input 
+                    type="number" 
+                    step="0.1"
+                    min="0" max="100"
                     value={iotForm.HPT_Health} 
                     onChange={(e) => setIotForm({ ...iotForm, HPT_Health: e.target.value })} 
                   />
@@ -1053,15 +1163,21 @@ function App() {
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Focus Parameter:</span>
             <select 
               className="select-input" 
-              style={{ minWidth: '180px', padding: '4px 8px' }}
+              style={{ minWidth: '200px', padding: '4px 8px' }}
               value={selectedChartSensor} 
               onChange={(e) => setSelectedChartSensor(e.target.value)}
             >
-              <option value="T30">T30 - HPC Exit Temp (K)</option>
-              <option value="T50">T50 - LPT Exit Temp (K)</option>
-              <option value="Vibration">Vibration - Structural (mm/s)</option>
-              <option value="FuelFlow">FuelFlow - Fuel Ratio (pps)</option>
-              <option value="Efficiency">Efficiency - Fan/Core (%)</option>
+              <option value="T30">T30 — HPC Outlet Temp (K)</option>
+              <option value="T50">T50 — LPT Outlet Temp (K)</option>
+              <option value="T24">T24 — LPC Outlet Temp (K)</option>
+              <option value="Ps30">Ps30 — HPC Static Press (psia)</option>
+              <option value="Nf">Nf — Physical Fan Speed (rpm)</option>
+              <option value="Nc">Nc — Physical Core Speed (rpm)</option>
+              <option value="phi">phi — Fuel-Air Ratio (pps)</option>
+              <option value="BPR">BPR — Bypass Ratio</option>
+              <option value="htBleed">htBleed — Bleed Enthalpy</option>
+              <option value="HPT_coolant">HPT_coolant — HPT Coolant Bleed</option>
+              <option value="LPT_coolant">LPT_coolant — LPT Coolant Bleed</option>
             </select>
           </div>
         </div>
@@ -1091,22 +1207,34 @@ function App() {
           <h3 className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Icon name="award" /> Research Analytics &amp; Cross-Dataset Generalization Benchmark
           </h3>
-          <button 
-            className={`btn ${isBenchmarking ? 'btn-active' : ''}`}
-            onClick={triggerBenchmark}
-            disabled={isBenchmarking}
-          >
-            {isBenchmarking ? (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {benchmarkData && (
               <React.Fragment>
-                <span className="spinner" style={{ width: '10px', height: '10px', display: 'inline-block', marginRight: '6px' }}></span>
-                Running Full Benchmark Suite...
-              </React.Fragment>
-            ) : (
-              <React.Fragment>
-                <Icon name="play" /> Evaluate Cross-Subset Generalization
+                <button className="btn" onClick={handleCopyLatex} title="Copy LaTeX table to clipboard">
+                  <Icon name="clipboard" /> Copy LaTeX
+                </button>
+                <button className="btn" onClick={handleExportMarkdown} title="Export results as Markdown file">
+                  <Icon name="download" /> Export MD
+                </button>
               </React.Fragment>
             )}
-          </button>
+            <button 
+              className={`btn ${isBenchmarking ? 'btn-active' : ''}`}
+              onClick={triggerBenchmark}
+              disabled={isBenchmarking}
+            >
+              {isBenchmarking ? (
+                <React.Fragment>
+                  <span className="spinner" style={{ width: '10px', height: '10px', display: 'inline-block', marginRight: '6px' }}></span>
+                  Running Full Benchmark Suite...
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <Icon name="play" /> Evaluate Cross-Subset Generalization
+                </React.Fragment>
+              )}
+            </button>
+          </div>
         </div>
 
         {benchmarkData ? (
@@ -1120,66 +1248,64 @@ function App() {
                 {id: 'faithfulness', label: 'PMA Faithfulness'},
                 {id: 'ablation', label: 'Ablation Study'},
                 {id: 'baselines', label: 'Baselines'},
+                {id: 'modelcard', label: 'Model Card'},
               ].map(tab => (
                 <button key={tab.id} className={`tab-btn ${activeResearchTab === tab.id ? 'active' : ''}`} onClick={() => setActiveResearchTab(tab.id)}>{tab.label}</button>
               ))}
             </div>
 
             {/* ─── TAB: Results Table ─── */}
-            {activeResearchTab === 'table' && (
-              <div className="table-container">
-                <table className="benchmark-table">
-                  <thead>
-                    <tr>
-                      <th>Source</th>
-                      <th>Target Dataset</th>
-                      <th>RMSE ↓</th>
-                      <th>NASA Score ↓</th>
-                      <th title="Prediction Interval Coverage Probability at 90% CI — well-calibrated ≈ 0.90">PICP (90%CI) ↑</th>
-                      <th title="Mean width of 90% CI — lower is sharper">Sharpness ↓</th>
-                      <th>Degradation %</th>
-                      <th>Data Source</th>
-                      <th>Finding</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {benchmarkData.results.map((r, i) => {
-                      const isOmitted = r.rmse === null || r.rmse === undefined;
-                      const badgeColor = r.data_source === 'real' ? 'var(--accent-green)' : r.data_source === 'omitted' ? '#4d607c' : 'var(--accent-orange)';
-                      return (
-                        <tr key={i} style={{ opacity: isOmitted ? 0.45 : 1.0 }}>
-                          <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{r.source}</td>
-                          <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>{r.target}</td>
-                          <td style={{ fontFamily: 'var(--font-mono)' }}>{isOmitted ? '—' : `${r.rmse} cyc`}</td>
-                          <td style={{ fontFamily: 'var(--font-mono)' }}>{isOmitted ? '—' : r.score.toFixed(0)}</td>
-                          <td style={{ fontFamily: 'var(--font-mono)', color: !isOmitted && r.picp >= 0.85 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
-                            {isOmitted ? '—' : r.picp.toFixed(3)}
-                          </td>
-                          <td style={{ fontFamily: 'var(--font-mono)' }}>{isOmitted ? '—' : r.sharpness.toFixed(1)}</td>
-                          <td style={{
-                            fontFamily: 'var(--font-mono)', fontWeight: 'bold',
-                            color: isOmitted ? '#4d607c' : r.degradation > 40 ? 'var(--accent-red)' : r.degradation > 0 ? 'var(--accent-orange)' : 'var(--accent-green)'
-                          }}>
-                            {isOmitted ? '—' : r.degradation === 0 ? 'Baseline' : `+${r.degradation.toFixed(1)}%`}
-                          </td>
-                          <td>
-                            <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', border: `1px solid ${badgeColor}`, color: badgeColor, fontFamily: 'var(--font-mono)' }}>
-                              {r.data_source === 'omitted' ? 'OMITTED' : r.data_source === 'real' ? 'Real Data' : 'Synthetic'}
-                            </span>
-                          </td>
-                          <td style={{ fontSize: '10px', color: isOmitted ? '#4d607c' : 'inherit' }}>{r.finding}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
-                  PICP = Prediction Interval Coverage Probability. Target ≈ 0.90 for a well-calibrated 90% CI.
-                  Sharpness = mean 90% CI width in RUL cycles — smaller is more precise given adequate PICP.
-                  N-CMAPSS row omitted if no real H5 file detected (prevents synthetic-data fabrication).
-                </p>
-              </div>
-            )}
+            {activeResearchTab === 'table' && (() => {
+              const rows = getBenchmarkResultsArray(benchmarkData);
+              return (
+                <div className="table-container">
+                  <table className="benchmark-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Target Dataset</th>
+                        <th>Zero-Shot RMSE ↓</th>
+                        <th>Few-Shot RMSE ↓</th>
+                        <th>NASA Score ↓</th>
+                        <th title="Prediction Interval Coverage Probability at 90% CI — well-calibrated ≈ 0.90">PICP (90%CI) ↑</th>
+                        <th title="Mean width of 90% CI — lower is sharper">Sharpness ↓</th>
+                        <th>Data Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => {
+                        const isOmitted = r.rmse === null || r.rmse === undefined;
+                        const badgeColor = r.data_source === 'real' ? 'var(--accent-green)' : '#ff8c00';
+                        return (
+                          <tr key={i} style={{ opacity: isOmitted ? 0.45 : 1.0 }}>
+                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{r.source}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>{r.target}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{isOmitted ? '—' : r.rmse_str}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)' }}>{isOmitted ? '—' : r.ft_rmse_str}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{isOmitted ? '—' : r.score_str}</td>
+                            <td style={{ fontFamily: 'var(--font-mono)', color: !isOmitted && r.picp >= 0.85 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
+                              {isOmitted || r.picp === null ? '—' : r.picp.toFixed(3)}
+                            </td>
+                            <td style={{ fontFamily: 'var(--font-mono)' }}>{isOmitted || r.sharpness === null ? '—' : r.sharpness.toFixed(1)}</td>
+                            <td>
+                              <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '3px', border: `1px solid ${badgeColor}`, color: badgeColor, fontFamily: 'var(--font-mono)' }}>
+                                {r.data_source === 'real' ? '● REAL PHYSICAL DATA' : '○ SIMULATED FALLBACK'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '8px', fontFamily: 'var(--font-mono)' }}>
+                    Rows show mean ± std across 3 seeds (42, 123, 7). PICP target ≈ 0.90 for well-calibrated 90% CI.
+                    Few-Shot = fine-tuned on 10% of target domain engines (5 epochs). Data badge reflects whether real
+                    physical CMAPSS files were loaded vs synthetic simulation fallback.
+                    Wilcoxon p-value vs PlainLSTM baseline: {benchmarkData.p_value !== undefined ? benchmarkData.p_value.toExponential(3) : '—'}
+                  </p>
+                </div>
+              );
+            })()}
 
             {/* ─── TAB: LaTeX ─── */}
             {activeResearchTab === 'latex' && (
@@ -1255,14 +1381,18 @@ function App() {
                 {benchmarkData.faithfulness && (
                   <div style={{ display: 'flex', gap: '32px' }}>
                     {[
-                      {label: 'PMA — Ours', key: 'pma_audc', color: '#00f0ff'},
-                      {label: 'Gradient×Input', key: 'gradient_audc', color: '#ff8c00'},
-                      {label: 'Random Baseline', key: 'random_audc', color: '#4d607c'},
+                      {label: 'PMA — Ours', key: 'pma_audc', ci_key: 'pma_ci', color: '#00f0ff'},
+                      {label: 'Integrated Gradients', key: 'ig_audc', ci_key: 'ig_ci', color: '#5e3c99'},
+                      {label: 'Gradient×Input', key: 'gradient_audc', ci_key: 'gradient_ci', color: '#e66101'},
+                      {label: 'Random Baseline', key: 'random_audc', ci_key: 'random_ci', color: '#4d607c'},
                     ].map(item => (
                       <div key={item.key} style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: '20px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', color: item.color }}>
                           {benchmarkData.faithfulness[item.key] !== null && benchmarkData.faithfulness[item.key] !== undefined
                             ? benchmarkData.faithfulness[item.key].toFixed(3) : '—'}
+                        </div>
+                        <div style={{ fontSize: '9px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                          ±{benchmarkData.faithfulness[item.ci_key] !== undefined ? benchmarkData.faithfulness[item.ci_key].toFixed(3) : '?'} (95% CI)
                         </div>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>AUDC — {item.label}</div>
                       </div>
@@ -1386,13 +1516,59 @@ function App() {
               </div>
             )}
 
+            {/* ─── TAB: Model Card ─── */}
+            {activeResearchTab === 'modelcard' && (
+              <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                {/* Architecture */}
+                <div style={{ background: 'rgba(0,240,255,0.04)', border: '1px solid rgba(0,240,255,0.15)', borderRadius: '6px', padding: '14px' }}>
+                  <h4 style={{ fontSize: '11px', color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Architecture</h4>
+                  {[['Model', 'AE-HI-BayesianLSTM (Proposed)'], ['AE Type', 'LSTM Autoencoder (Encoder→Decoder)'], ['AE Hidden Dim', `${benchmarkData.window_size ? 8 : '—'} units`], ['LSTM Hidden Dim', '16 units (MC-Dropout=0.25)'], ['HI Pipeline', 'AE Recon Error → HI Sequence → LSTM RUL']].map(([k,v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(77,96,124,0.1)', fontSize: '10px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{k}</span>
+                      <span style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Hyperparameters */}
+                <div style={{ background: 'rgba(0,136,255,0.04)', border: '1px solid rgba(0,136,255,0.15)', borderRadius: '6px', padding: '14px' }}>
+                  <h4 style={{ fontSize: '11px', color: '#0088ff', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Hyperparameters</h4>
+                  {[['Window Size', `${benchmarkData.window_size || 30} cycles`], ['Epochs (max)', benchmarkData.epochs || 20], ['Early Stopping Pat.', 4], ['Learning Rate', '0.01 (Adam)'], ['Batch Size', 64], ['Val Split', '15% engines'], ['Seeds', (benchmarkData.seeds || [42,123,7]).join(', ')]].map(([k,v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(77,96,124,0.1)', fontSize: '10px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{k}</span>
+                      <span style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Data Config */}
+                <div style={{ background: 'rgba(0,200,83,0.04)', border: '1px solid rgba(0,200,83,0.15)', borderRadius: '6px', padding: '14px' }}>
+                  <h4 style={{ fontSize: '11px', color: '#00c853', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Data Configuration</h4>
+                  {[['Sensor Set', '14 literature-standard'], ['Source', 'NASA CMAPSS (FD001–4)'], ['RUL Cap FD001/3', '125 cycles'], ['RUL Cap FD002/4', '130 cycles'], ['Normalization', 'Per-regime Z-score'], ['Fabricated Sensors', 'None (leakage-free)']].map(([k,v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(77,96,124,0.1)', fontSize: '10px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{k}</span>
+                      <span style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Explainability */}
+                <div style={{ background: 'rgba(255,140,0,0.04)', border: '1px solid rgba(255,140,0,0.15)', borderRadius: '6px', padding: '14px' }}>
+                  <h4 style={{ fontSize: '11px', color: '#ff8c00', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Explainability</h4>
+                  {[['XAI Method', 'PMA (proposed)'], ['Baselines', 'Integrated Gradients, Grad×Input'], ['Evaluation', 'Deletion curves (AUDC) N=100'], ['CI', '95% confidence intervals'], ['PMA Axioms', 'Satisfies efficiency; Shapley-like but non-exact']].map(([k,v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(77,96,124,0.1)', fontSize: '10px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{k}</span>
+                      <span style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)', textAlign: 'right', maxWidth: '55%' }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         ) : (
           <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Icon name="info" className="lucide" style={{ width: '24px', height: '24px', display: 'block', margin: '0 auto 8px', color: 'var(--accent-blue)' }} />
             Click "Evaluate Cross-Subset Generalization" to run the full benchmark suite.
             Includes: MC-Dropout UQ metrics (PICP, Sharpness), real PMA attributions,
-            PMA faithfulness test, 3-seed baselines (PlainLSTM, CNN-LSTM), and ablation study.
+            PMA faithfulness tests (N=100, 95% CI), 3-seed baselines (PlainLSTM, CNN-LSTM), ablation study, and a Model Card.
           </div>
         )}
       </div>

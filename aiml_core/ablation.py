@@ -10,7 +10,8 @@ Two targeted ablations that justify the design choices in the pipeline:
 
 2. Window Size Sensitivity Ablation:
    Evaluates the pipeline for window sizes [15, 30, 50] on FD001.
-   Shows how the 30-cycle window trades off between local detail and
+   Varies the AE encoding window size concurrently with the downstream HI sequence.
+   Shows how the window size trades off between local detail and
    long-range context.
 """
 
@@ -28,8 +29,10 @@ from aiml_core.data_loader import (
     DatasetManager, normalize_regimes,
     prepare_sliding_windows, CMAPSS_SENSORS
 )
+from aiml_core.config import CONFIG
+from aiml_core.train_utils import train_pipeline, get_or_train_models
 from aiml_core.benchmark import (
-    compute_nasa_score, train_pipeline, run_evaluation
+    compute_nasa_score, run_evaluation
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -40,7 +43,7 @@ def _train_raw_lstm(
     sensor_list: List[str],
     window_size: int = 30,
     hidden_dim: int = 16,
-    epochs: int = 5,
+    epochs: int = 20,
     seed: int = 42
 ) -> BayesianLSTM:
     """
@@ -49,30 +52,70 @@ def _train_raw_lstm(
     This is the ablation baseline (no HI abstraction).
     """
     torch.manual_seed(seed)
-    X, Y = prepare_sliding_windows(norm_train_df, sensor_list, window_size=window_size)
-    if len(X) == 0:
+    np.random.seed(seed)
+    
+    # 85/15 train/val split at engine level
+    unique_engines = norm_train_df["engine_id"].unique()
+    rng = np.random.default_rng(seed)
+    val_engines = rng.choice(unique_engines, size=int(len(unique_engines) * CONFIG["validation_split"]), replace=False)
+    train_engines = np.setdiff1d(unique_engines, val_engines)
+    
+    train_sub = norm_train_df[norm_train_df["engine_id"].isin(train_engines)]
+    val_sub = norm_train_df[norm_train_df["engine_id"].isin(val_engines)]
+    
+    X_tr, Y_tr = prepare_sliding_windows(train_sub, sensor_list, window_size=window_size)
+    X_va, Y_va = prepare_sliding_windows(val_sub, sensor_list, window_size=window_size)
+    
+    if len(X_tr) == 0:
         raise ValueError("No sliding windows generated.")
+    if len(X_va) == 0:
+        X_va, Y_va = X_tr, Y_tr
 
-    n_features = X.shape[-1]
+    n_features = X_tr.shape[-1]
     model = BayesianLSTM(input_dim=n_features, hidden_dim=hidden_dim, output_dim=1).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["learning_rate"])
     criterion = nn.MSELoss()
 
-    X_t = torch.FloatTensor(X).to(device)
-    Y_t = torch.FloatTensor(Y).to(device)
+    X_tr_t = torch.FloatTensor(X_tr).to(device)
+    Y_tr_t = torch.FloatTensor(Y_tr).to(device)
+    X_va_t = torch.FloatTensor(X_va).to(device)
+    Y_va_t = torch.FloatTensor(Y_va).to(device)
+
+    best_loss = float("inf")
+    best_state = None
+    patience_counter = 0
 
     model.train()
-    batch_size = 64
-    for _ in range(epochs):
-        perm = torch.randperm(X_t.size(0))
-        for i in range(0, X_t.size(0), batch_size):
+    batch_size = CONFIG["batch_size"]
+    for epoch in range(epochs):
+        model.train()
+        perm = torch.randperm(X_tr_t.size(0))
+        for i in range(0, X_tr_t.size(0), batch_size):
             idx = perm[i : i + batch_size]
-            bx, by = X_t[idx], Y_t[idx]
+            bx, by = X_tr_t[idx], Y_tr_t[idx]
             optimizer.zero_grad()
             pred = model(bx, mc_dropout=False)
             loss = criterion(pred, by)
             loss.backward()
             optimizer.step()
+            
+        model.eval()
+        with torch.no_grad():
+            val_pred = model(X_va_t, mc_dropout=False)
+            val_loss = float(criterion(val_pred, Y_va_t).item())
+            
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            
+        if patience_counter >= CONFIG["early_stopping_patience"]:
+            break
+            
+    if best_state is not None:
+        model.load_state_dict({k: v.to(device) for k, v in best_state.items()})
     return model
 
 
@@ -102,22 +145,14 @@ def run_hi_ablation(
 ) -> Dict[str, Any]:
     """
     Ablation 1: Health Index Abstraction Benefit.
-
-    Trains two variants on FD001 and evaluates on FD001 (same-domain):
-      A. BayesianLSTM on HI sequence (full proposed pipeline)
-      B. BayesianLSTM on raw sensor sequence (no HI, no AE)
-
-    Returns dict with RMSE and NASA Score for both variants plus delta.
     """
     print("[ablation] HI Abstraction Ablation — loading FD001...")
-    torch.manual_seed(seed)
     train_df, test_df = dm.get_dataset("FD001")
     train_df = train_df.ffill().bfill()
     test_df = test_df.ffill().bfill()
 
     sensor_list = CMAPSS_SENSORS
 
-    # Per-regime normalization
     norm_train = normalize_regimes(
         train_df, sensor_list,
         regime_col="regime" if "regime" in train_df.columns else "Setting1"
@@ -128,8 +163,12 @@ def run_hi_ablation(
     )
 
     print("[ablation] Training Variant A: Full pipeline (AE → HI → LSTM)...")
-    ae_model, lstm_hi, ae_threshold = train_pipeline(train_df, epochs=5)
-    rmse_hi, score_hi, *_ = run_evaluation("FD001", ae_model, lstm_hi, ae_threshold, dm)
+    ae_model, lstm_hi, ae_threshold, mean_recon_err, t_mean, t_std = get_or_train_models("FD001", seed, dm)
+    
+    # Run evaluation and unpack all 9 elements
+    rmse_hi, score_hi, picp, sharpness, pred_means, pred_stds, y_true, X_lstm_t, norm_test_ret = run_evaluation(
+        "FD001", ae_model, lstm_hi, ae_threshold, dm, window_size=CONFIG["window_size"]
+    )
 
     print("[ablation] Training Variant B: Raw sensor LSTM (no HI)...")
     raw_lstm = _train_raw_lstm(norm_train, sensor_list, window_size=30, seed=seed)
@@ -151,7 +190,7 @@ def run_hi_ablation(
         },
         "delta_rmse": delta_rmse,
         "delta_pct": delta_pct,
-        "hi_helps": delta_rmse > 0  # True if HI pipeline is better (lower RMSE)
+        "hi_helps": delta_rmse > 0
     }
 
     print(f"[ablation] HI result: RMSE={rmse_hi:.2f}, Raw result: RMSE={rmse_raw:.2f}, Delta: {delta_rmse:+.2f} ({delta_pct:+.1f}%)")
@@ -165,11 +204,7 @@ def run_window_size_ablation(
 ) -> List[Dict[str, Any]]:
     """
     Ablation 2: Window Size Sensitivity.
-
-    Trains and evaluates the full HI-LSTM pipeline for each window size on FD001.
-    Shows how the sliding window size affects RMSE and NASA score.
-
-    Returns list of dicts, one per window size.
+    Evaluates the pipeline for each window size on FD001, varying the AE window concurrently.
     """
     print(f"[ablation] Window Size Ablation — windows={list(windows)}...")
     train_df, _ = dm.get_dataset("FD001")
@@ -177,12 +212,16 @@ def run_window_size_ablation(
 
     results = []
     for w in windows:
-        print(f"[ablation]   Training with window_size={w}...")
-        torch.manual_seed(seed)
+        print(f"[ablation]   Training with window_size={w} (AE + LSTM)...")
         try:
-            ae_model, lstm_model, ae_threshold = train_pipeline(train_df, epochs=5)
-            # pyrefly: ignore [bad-unpacking]
-            rmse, score = run_evaluation("FD001", ae_model, lstm_model, ae_threshold, dm)
+            # Train pipeline dynamically with target window size (AE & LSTM both use window_size = w)
+            ae_model, lstm_model, ae_threshold, mean_recon_err, t_mean, t_std = train_pipeline(
+                "FD001", train_df, seed, window_size=w
+            )
+            # Evaluate using same window size
+            rmse, score, picp, sharpness, pred_means, pred_stds, y_true, X_lstm_t, norm_test_ret = run_evaluation(
+                "FD001", ae_model, lstm_model, ae_threshold, dm, window_size=w
+            )
             results.append({
                 "window_size": w,
                 "rmse": round(rmse, 2),
