@@ -76,21 +76,34 @@ def compute_calibration_metrics(
     pred_means: np.ndarray,
     pred_stds: np.ndarray,
     confidence_level: float = 0.9
-) -> Dict[str, float]:
-    """Computes PICP and Sharpness (MPIW)."""
-    z = 1.645  # 90% confidence interval
-    lower = pred_means - z * pred_stds
-    upper = pred_means + z * pred_stds
+) -> Dict[str, Any]:
+    """Computes PICP and Sharpness (MPIW) for multiple confidence levels (50%, 80%, 90%, 95%)."""
+    from scipy.stats import norm
+    results = {}
+    
+    # Calculate for the requested default level first for backward compatibility
+    z_def = float(norm.ppf((1 + confidence_level) / 2))
+    lower_def = pred_means - z_def * pred_stds
+    upper_def = pred_means + z_def * pred_stds
+    covered_def = ((y_true >= lower_def) & (y_true <= upper_def)).astype(float)
+    results["picp"] = round(float(covered_def.mean()), 4)
+    results["sharpness"] = round(float((upper_def - lower_def).mean()), 2)
+    results["target_coverage"] = confidence_level
 
-    covered = ((y_true >= lower) & (y_true <= upper)).astype(float)
-    picp = float(covered.mean())
-    sharpness = float((upper - lower).mean())
-
-    return {
-        "picp": round(picp, 4),
-        "sharpness": round(sharpness, 2),
-        "target_coverage": confidence_level
-    }
+    # Calculate for standard publication levels
+    for cl in [0.5, 0.8, 0.9, 0.95]:
+        z = float(norm.ppf((1 + cl) / 2))
+        lower = pred_means - z * pred_stds
+        upper = pred_means + z * pred_stds
+        covered = ((y_true >= lower) & (y_true <= upper)).astype(float)
+        picp_val = float(covered.mean())
+        sharpness_val = float((upper - lower).mean())
+        results[f"cl_{int(cl*100)}"] = {
+            "picp": round(picp_val, 4),
+            "sharpness": round(sharpness_val, 2),
+            "target_coverage": cl
+        }
+    return results
 
 def compute_reliability_diagram(
     y_true: np.ndarray,
@@ -566,9 +579,9 @@ def generate_benchmark_tables() -> Dict[str, Any]:
         
     if baseline_results:
         md_table += "\n**Baselines (FD001, 3-seed mean±std):**\n"
-        md_table += "| Model | RMSE | NASA Score |\n|-------|------|------------|\n"
+        md_table += "| Model | RMSE | MAE | NASA Score |\n|-------|------|-----|------------|\n"
         for name, b in baseline_results.items():
-            md_table += f"| {name} | {b['rmse_str']} | {b['score_str']} |\n"
+            md_table += f"| {name} | {b['rmse_str']} | {b['mae_str']} | {b['score_str']} |\n"
 
     latex_table = (
         "\\begin{table}[h]\\centering\n"

@@ -1,8 +1,12 @@
 """
 baselines.py — Multi-seed Baseline Evaluation Suite
 
-Trains and evaluates PlainLSTM and CNN-LSTM on raw sensor windows
-(no Health Index abstraction) and reports RMSE and NASA Score.
+Trains and evaluates:
+  1. LinearDegradation (Linear Regression)
+  2. PlainLSTM (Vanilla LSTM)
+  3. RandomForest (Random Forest Regressor)
+on raw sensor windows (including settings/operating condition columns)
+and reports RMSE, MAE, and NASA Score.
 
 Multi-seed runs (3 seeds by default) with mean ± std reporting provide
 statistical weight to all benchmark comparisons.
@@ -15,9 +19,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import torch
 import torch.nn as nn
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 
-from aiml_core.models import PlainLSTM, CNNLSTMModel
+from aiml_core.models import PlainLSTM
 from aiml_core.data_loader import (
     DatasetManager, normalize_regimes, CMAPSS_SENSORS
 )
@@ -28,17 +34,31 @@ from aiml_core.train_utils import split_train_val_engines
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def compute_harness_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[float, float, float]:
+    """
+    Unified shared evaluation harness returning (RMSE, MAE, NASA Score).
+    Ensures all baseline and proposed models are scored under identical conditions.
+    """
+    y_true_flat = y_true.flatten()
+    y_pred_flat = y_pred.flatten()
+    rmse = float(np.sqrt(np.mean((y_pred_flat - y_true_flat) ** 2)))
+    mae = float(np.mean(np.abs(y_pred_flat - y_true_flat)))
+    score = compute_nasa_score(y_true_flat, y_pred_flat)
+    return rmse, mae, score
+
+
 def _prepare_raw_sensor_windows(
     df,
-    sensor_list: List[str],
+    feature_list: List[str],
     window_size: int = 30
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Prepares sliding windows of raw (regime-normalized) sensor data
-    for direct use as input to PlainLSTM / CNN-LSTM (no HI stage).
+    Prepares sliding windows of raw (regime-normalized) features
+    (both normalized sensors and operating settings/conditions)
+    for direct use as input to baselines.
 
     Returns:
-        X: (N, window_size, n_sensors)
+        X: (N, window_size, n_features)
         Y: (N, 1)
     """
     X_list, Y_list = [], []
@@ -46,7 +66,7 @@ def _prepare_raw_sensor_windows(
         eng = df[df["engine_id"] == eid].sort_values("cycle")
         if "RUL_actual" not in eng.columns:
             continue
-        vals = eng[sensor_list].values
+        vals = eng[feature_list].values
         ruls = eng["RUL_actual"].values
         n = len(eng)
         if n < window_size:
@@ -56,11 +76,11 @@ def _prepare_raw_sensor_windows(
             Y_list.append(ruls[i + window_size - 1])
 
     if len(X_list) == 0:
-        return np.zeros((0, window_size, len(sensor_list))), np.zeros((0, 1))
+        return np.zeros((0, window_size, len(feature_list))), np.zeros((0, 1))
     return np.array(X_list), np.array(Y_list).reshape(-1, 1)
 
 
-def _train_and_eval_model(
+def _train_and_eval_lstm(
     model: nn.Module,
     X_train: np.ndarray,
     Y_train: np.ndarray,
@@ -73,8 +93,8 @@ def _train_and_eval_model(
     learning_rate: float = 0.01,
     early_stopping_patience: int = 4,
     seed: int = 42
-) -> Tuple[float, float, np.ndarray]:
-    """Generic train-and-eval loop with early stopping and best-epoch state recovery."""
+) -> Tuple[float, float, float, np.ndarray]:
+    """Generic train-and-eval loop for PyTorch LSTM baseline."""
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -126,9 +146,8 @@ def _train_and_eval_model(
     with torch.no_grad():
         pred_test = model(X_te).cpu().numpy().flatten()
 
-    rmse = float(np.sqrt(np.mean((pred_test - Y_test.flatten()) ** 2)))
-    score = compute_nasa_score(Y_test.flatten(), pred_test)
-    return rmse, score, pred_test
+    rmse, mae, score = compute_harness_metrics(Y_test, pred_test)
+    return rmse, mae, score, pred_test
 
 
 def run_baseline_suite(
@@ -138,9 +157,9 @@ def run_baseline_suite(
     window_size: int = 30
 ) -> Dict[str, Dict]:
     """
-    Trains PlainLSTM and CNN-LSTM on FD001 and evaluates on FD001 (same-domain).
+    Trains LinearDegradation, PlainLSTM, and RandomForest on FD001 and evaluates on FD001.
+    Inputs are shaped as window_size * (len(sensor_list) + len(settings)) to ensure identical conditioning.
     Runs across multiple random seeds and returns mean ± std metrics.
-    Reuses training configs and split ratios, and outputs seed 42 predictions.
     """
     if seeds is None:
         seeds = CONFIG["seeds"]
@@ -153,13 +172,17 @@ def run_baseline_suite(
     test_df = test_df.ffill().bfill()
 
     sensor_list = CMAPSS_SENSORS
+    # Operational condition/settings columns to match proposed model's context
+    setting_cols = [c for c in ["Setting1", "setting1", "setting2", "setting3", "Setting2", "Setting3", "alt", "Mach", "TRA"] if c in train_df.columns]
+    feature_list = sensor_list + setting_cols
+
     results = {}
 
-    # Initialize results structures
-    for model_name, ModelClass in [("PlainLSTM", PlainLSTM), ("CNN-LSTM", CNNLSTMModel)]:
+    for model_name in ["LinearDegradation", "PlainLSTM", "RandomForest"]:
         print(f"[baselines] Running {model_name} across {len(seeds)} seeds...")
-        rmses, scores = [], []
+        rmses, maes, scores = [], [], []
         pred_test_seed_42 = None
+
         for seed in seeds:
             # 1. Split training engines at engine level to avoid leakage
             train_sub, val_sub = split_train_val_engines(train_df, CONFIG["validation_split"], seed)
@@ -188,47 +211,68 @@ def run_baseline_suite(
             norm_val[sensor_list] = (norm_val[sensor_list].values - mean_s) / std_s
             norm_test[sensor_list] = (norm_test[sensor_list].values - mean_s) / std_s
 
-            # 4. Prepare sliding windows
-            X_train, Y_train = _prepare_raw_sensor_windows(norm_train, sensor_list, window_size)
-            X_val, Y_val = _prepare_raw_sensor_windows(norm_val, sensor_list, window_size)
-            X_test, Y_test = _prepare_raw_sensor_windows(norm_test, sensor_list, window_size)
+            # 4. Prepare sliding windows (inputs contain both normalized sensors & operating settings)
+            X_train, Y_train = _prepare_raw_sensor_windows(norm_train, feature_list, window_size)
+            X_val, Y_val = _prepare_raw_sensor_windows(norm_val, feature_list, window_size)
+            X_test, Y_test = _prepare_raw_sensor_windows(norm_test, feature_list, window_size)
 
             if len(X_train) == 0 or len(X_test) == 0:
                 print("[baselines] Insufficient data — returning dummy results.")
-                dummy = {"rmse_mean": 35.0, "rmse_std": 0.0, "score_mean": 9999.0, "score_std": 0.0}
-                return {"PlainLSTM": dummy, "CNN-LSTM": dummy}
+                dummy = {"rmse_mean": 35.0, "rmse_std": 0.0, "mae_mean": 25.0, "mae_std": 0.0, "score_mean": 9999.0, "score_std": 0.0}
+                return {"LinearDegradation": dummy, "PlainLSTM": dummy, "RandomForest": dummy}
 
             if len(X_val) == 0:
                 X_val, Y_val = X_train.copy(), Y_train.copy()
 
-            n_sensors = X_train.shape[-1]
-            torch.manual_seed(seed)
-            if ModelClass == PlainLSTM:
-                model = PlainLSTM(input_dim=n_sensors, hidden_dim=32).to(device)
-            else:
-                model = CNNLSTMModel(input_dim=n_sensors, hidden_dim=32).to(device)
+            if model_name == "LinearDegradation":
+                # Linear Regression on flattened sliding windows
+                X_train_flat = X_train.reshape(X_train.shape[0], -1)
+                X_test_flat = X_test.reshape(X_test.shape[0], -1)
+                lr = LinearRegression()
+                lr.fit(X_train_flat, Y_train.flatten())
+                pred_test = lr.predict(X_test_flat)
+                rmse, mae, score = compute_harness_metrics(Y_test, pred_test)
 
-            rmse, score, pred_test = _train_and_eval_model(
-                model, X_train, Y_train, X_val, Y_val, X_test, Y_test,
-                epochs=epochs, batch_size=CONFIG["batch_size"],
-                learning_rate=CONFIG["learning_rate"],
-                early_stopping_patience=CONFIG["early_stopping_patience"],
-                seed=seed
-            )
+            elif model_name == "RandomForest":
+                # Random Forest Regressor on flattened sliding windows
+                X_train_flat = X_train.reshape(X_train.shape[0], -1)
+                X_test_flat = X_test.reshape(X_test.shape[0], -1)
+                rf = RandomForestRegressor(n_estimators=50, max_depth=12, random_state=seed, n_jobs=-1)
+                rf.fit(X_train_flat, Y_train.flatten())
+                pred_test = rf.predict(X_test_flat)
+                rmse, mae, score = compute_harness_metrics(Y_test, pred_test)
+
+            else:
+                # PlainLSTM PyTorch baseline
+                n_features = X_train.shape[-1]
+                torch.manual_seed(seed)
+                model = PlainLSTM(input_dim=n_features, hidden_dim=32).to(device)
+                rmse, mae, score, pred_test = _train_and_eval_lstm(
+                    model, X_train, Y_train, X_val, Y_val, X_test, Y_test,
+                    epochs=epochs, batch_size=CONFIG["batch_size"],
+                    learning_rate=CONFIG["learning_rate"],
+                    early_stopping_patience=CONFIG["early_stopping_patience"],
+                    seed=seed
+                )
+
             rmses.append(rmse)
+            maes.append(mae)
             scores.append(score)
             if seed == 42:
                 pred_test_seed_42 = pred_test
-            print(f"  seed={seed}  RMSE={rmse:.2f}  NASA={score:.1f}")
+            print(f"  seed={seed}  RMSE={rmse:.2f}  MAE={mae:.2f}  NASA={score:.1f}")
 
         results[model_name] = {
             "rmse_mean": round(float(np.mean(rmses)), 2),
             "rmse_std": round(float(np.std(rmses)), 2),
+            "mae_mean": round(float(np.mean(maes)), 2),
+            "mae_std": round(float(np.std(maes)), 2),
             "score_mean": round(float(np.mean(scores)), 1),
             "score_std": round(float(np.std(scores)), 1),
             "rmse_str": f"{np.mean(rmses):.2f} ± {np.std(rmses):.2f}",
+            "mae_str": f"{np.mean(maes):.2f} ± {np.std(maes):.2f}",
             "score_str": f"{np.mean(scores):.1f} ± {np.std(scores):.1f}",
-            "per_seed": [{"seed": s, "rmse": r, "score": sc} for s, r, sc in zip(seeds, rmses, scores)],
+            "per_seed": [{"seed": s, "rmse": r, "mae": m, "score": sc} for s, r, m, sc in zip(seeds, rmses, maes, scores)],
             "predictions_seed_42": pred_test_seed_42
         }
 

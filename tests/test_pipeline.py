@@ -13,6 +13,7 @@ import os
 # Add the project root to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# pyrefly: ignore [missing-import]
 import pytest
 import numpy as np
 
@@ -179,5 +180,93 @@ def test_config_keys():
         "CONFIG['seeds'] must be a non-empty list."
     assert CONFIG["validation_split"] > 0.0 and CONFIG["validation_split"] < 1.0, \
         "CONFIG['validation_split'] must be in (0, 1)."
-    assert CONFIG["early_stopping_patience"] >= 1, \
-        "CONFIG['early_stopping_patience'] must be at least 1."
+    assert CONFIG["early_stopping_patience"] >= 1, "CONFIG['early_stopping_patience'] must be at least 1."
+# ─── Test 5: Calibration Sanity Check ─────────────────────────────────────────
+
+def test_calibration_sanity(fd001_datasets):
+    """
+    Validates that empirical coverage (PICP) tracks target nominal confidence levels.
+    Nominal targets: 50%, 80%, 95%.
+    """
+    from aiml_core.train_utils import get_calibration_metrics
+    dm, _, _ = fd001_datasets
+    
+    cal = get_calibration_metrics("FD001", seed=42, dm=dm)
+    
+    # Assert PICP is monotonic: wider intervals must cover at least as many points
+    picp_50 = cal["cl_50"]["picp"]
+    picp_80 = cal["cl_80"]["picp"]
+    picp_95 = cal["cl_95"]["picp"]
+    
+    assert 0.0 <= picp_50 <= 1.0
+    assert 0.0 <= picp_80 <= 1.0
+    assert 0.0 <= picp_95 <= 1.0
+    assert picp_50 <= picp_80 <= picp_95, (
+        f"PICP should be non-decreasing with confidence level: "
+        f"50% level: {picp_50}, 80% level: {picp_80}, 95% level: {picp_95}"
+    )
+
+    # Assert sharpness is monotonic: wider intervals must have larger width
+    w_50 = cal["cl_50"]["sharpness"]
+    w_80 = cal["cl_80"]["sharpness"]
+    w_95 = cal["cl_95"]["sharpness"]
+    
+    assert 0.0 < w_50 <= w_80 <= w_95, (
+        f"Sharpness should be strictly positive and non-decreasing: "
+        f"50% level: {w_50}, 80% level: {w_80}, 95% level: {w_95}"
+    )
+
+
+# ─── Test 6: Cache Invalidation Test ─────────────────────────────────────────
+
+def test_cache_invalidation(tmp_path):
+    """
+    Verifies that altering model weight files changes their SHA256 hashes,
+    thereby invalidating explainability cache entries.
+    """
+    import json
+    import hashlib
+    from webdev_core.backend import get_file_sha256
+    
+    # 1. Create dummy checkpoint weights files
+    ae_file = tmp_path / "ae_dummy.pt"
+    lstm_file = tmp_path / "lstm_dummy.pt"
+    
+    ae_file.write_bytes(b"initial_ae_weights_state_vector_123")
+    lstm_file.write_bytes(b"initial_lstm_weights_state_vector_456")
+    
+    # 2. Get initial hashes
+    h_ae1 = get_file_sha256(str(ae_file))
+    h_lstm1 = get_file_sha256(str(lstm_file))
+    combined_hash1 = f"{h_ae1}_{h_lstm1}"
+    
+    # 3. Simulate explainability cache entry
+    mock_cache = {}
+    engine_id = 1
+    cycle = 50
+    cache_key1 = f"{combined_hash1}_{engine_id}_{cycle}"
+    
+    mock_explainers = {
+        "anomaly_shap": {"T30": 0.5},
+        "rul_shap": {"T30": -1.2},
+        "top_anomaly_drivers": [{"sensor": "T30", "val": 0.5}]
+    }
+    mock_cache[cache_key1] = mock_explainers
+    
+    # Assert cache hit
+    assert cache_key1 in mock_cache
+    
+    # 4. Modify one model weight checkpoint (retraining simulation)
+    ae_file.write_bytes(b"retrained_ae_weights_new_state_vector_789")
+    
+    # 5. Compute new hashes and assert cache miss
+    h_ae2 = get_file_sha256(str(ae_file))
+    combined_hash2 = f"{h_ae2}_{h_lstm1}"
+    cache_key2 = f"{combined_hash2}_{engine_id}_{cycle}"
+    
+    # Assert that cache invalidation works (mismatched hash misses cache)
+    assert h_ae1 != h_ae2, "SHA256 hashes must differ after modifying file bytes."
+    assert cache_key2 not in mock_cache, (
+        "Retrained model weights hash must cause cache miss to prevent serving stale explainability values."
+    )
+

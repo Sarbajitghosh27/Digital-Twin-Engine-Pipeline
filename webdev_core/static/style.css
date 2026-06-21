@@ -1,26 +1,29 @@
 /* AERO-TWIN DESIGN SYSTEM - PREMIUM AEROSPACE UI */
 
+/* DEFAULT LIGHT CLINICAL-ENGINEERING THEME */
 :root {
-  --bg-primary: #060a13;
-  --bg-secondary: #0d1322;
-  --bg-card: rgba(16, 24, 48, 0.65);
-  --bg-card-hover: rgba(22, 35, 69, 0.8);
+  --bg-primary: #eef1f6;
+  --bg-secondary: #e3e8f0;
   
-  /* Cyber Aerospace Accent System */
-  --accent-blue: #0088ff;
-  --accent-cyan: #00f0ff;
-  --accent-orange: #ff8c00;
-  --accent-red: #ff3355;
-  --accent-green: #00e676;
-  --accent-gray: #4d607c;
+  /* White glass cards */
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(255, 255, 255, 0.95);
   
-  /* Text colors */
-  --text-main: #f0f4fc;
-  --text-muted: #8397b5;
-  --text-dim: #546682;
+  /* Brand indigo accent & semantic states */
+  --accent-blue: #2563eb;
+  --accent-cyan: #1d4ed8;
+  --accent-orange: #d97706;
+  --accent-red: #dc2626;
+  --accent-green: #16a34a;
+  --accent-gray: #64748b;
+  
+  /* Text colors on light canvas */
+  --text-main: #0f172a;
+  --text-muted: #5b6b85;
+  --text-dim: #94a3b8;
   
   /* Status Colors */
-  --color-healthy: var(--accent-cyan);
+  --color-healthy: var(--accent-green);
   --color-warning: var(--accent-orange);
   --color-critical: var(--accent-red);
   
@@ -32,8 +35,46 @@
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   
+  --border-glow: 1px solid rgba(100, 116, 139, 0.20);
+  --shadow-glow: 0 8px 32px 0 rgba(100, 116, 139, 0.12);
+  
+  /* Canvas Background Gradient */
+  --bg-gradient: linear-gradient(to bottom, #eef1f6 0%, #e3e8f0 100%);
+}
+
+/* keep [data-theme=dark] block in sync with :root — see implementation plan */
+[data-theme="dark"] {
+  --bg-primary: #060a13;
+  --bg-secondary: #0d1322;
+  
+  /* Cyber glass cards */
+  --bg-card: rgba(16, 24, 48, 0.65);
+  --bg-card-hover: rgba(22, 35, 69, 0.8);
+  
+  /* Cyber Aerospace Accent System */
+  --accent-blue: #0088ff;
+  --accent-cyan: #00f0ff;
+  --accent-orange: #ff8c00;
+  --accent-red: #ff3355;
+  --accent-green: #00e676;
+  --accent-gray: #4d607c;
+  
+  /* Text colors on dark canvas */
+  --text-main: #f0f4fc;
+  --text-muted: #8397b5;
+  --text-dim: #546682;
+  
+  /* Status Colors */
+  --color-healthy: var(--accent-cyan);
+  --color-warning: var(--accent-orange);
+  --color-critical: var(--accent-red);
+  
   --border-glow: 1px solid rgba(0, 240, 255, 0.15);
   --shadow-glow: 0 0 15px rgba(0, 240, 255, 0.1);
+  
+  --bg-gradient: radial-gradient(at 10% 20%, rgba(0, 136, 255, 0.08) 0px, transparent 50%),
+                 radial-gradient(at 90% 80%, rgba(255, 140, 0, 0.05) 0px, transparent 50%),
+                 linear-gradient(to bottom, #060a13 0%, #03050a 100%);
 }
 
 * {
@@ -44,10 +85,7 @@
 
 body {
   background-color: var(--bg-primary);
-  background-image: 
-    radial-gradient(at 10% 20%, rgba(0, 136, 255, 0.08) 0px, transparent 50%),
-    radial-gradient(at 90% 80%, rgba(255, 140, 0, 0.05) 0px, transparent 50%),
-    linear-gradient(to bottom, #060a13 0%, #03050a 100%);
+  background-image: var(--bg-gradient);
   color: var(--text-main);
   font-family: var(--font-sans);
   min-height: 100vh;
@@ -130,7 +168,7 @@ header .branding h1 {
   font-weight: 700;
   font-size: 22px;
   letter-spacing: 2px;
-  background: linear-gradient(135deg, #fff 30%, var(--accent-cyan) 100%);
+  background: linear-gradient(135deg, var(--text-main) 30%, var(--accent-cyan) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }

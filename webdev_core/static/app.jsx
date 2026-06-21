@@ -63,6 +63,11 @@ function RulTrendRibbonChart({ history }) {
       chartInstanceRef.current.destroy();
     }
 
+    const theme = document.documentElement.getAttribute("data-theme") || "light";
+    const isDark = theme === "dark";
+    const gridColor = isDark ? "rgba(77, 96, 124, 0.08)" : "rgba(100, 116, 139, 0.08)";
+    const tickColor = isDark ? "#8397b5" : "#475569";
+
     const labels = history.map(h => h.current_cycle);
     const trueRul = history.map(h => h.max_cycles - h.current_cycle);
     const predMean = history.map(h => h.predictions.rul_mean || h.predictions.RUL_predicted);
@@ -87,7 +92,7 @@ function RulTrendRibbonChart({ history }) {
             label: 'Upper Bound',
             data: predUpper,
             borderColor: 'transparent',
-            backgroundColor: 'rgba(0, 240, 255, 0.12)',
+            backgroundColor: isDark ? 'rgba(0, 240, 255, 0.12)' : 'rgba(37, 99, 235, 0.12)',
             pointRadius: 0,
             fill: '-1',
             tension: 0.1
@@ -95,7 +100,7 @@ function RulTrendRibbonChart({ history }) {
           {
             label: 'Predicted RUL',
             data: predMean,
-            borderColor: '#0088ff',
+            borderColor: isDark ? '#0088ff' : '#2563eb',
             borderWidth: 2,
             pointRadius: 1,
             fill: false,
@@ -104,7 +109,7 @@ function RulTrendRibbonChart({ history }) {
           {
             label: 'True RUL',
             data: trueRul,
-            borderColor: 'rgba(255, 255, 255, 0.35)',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(15, 23, 42, 0.35)',
             borderWidth: 1.5,
             borderDash: [4, 4],
             pointRadius: 0,
@@ -122,9 +127,10 @@ function RulTrendRibbonChart({ history }) {
           tooltip: {
             mode: 'index',
             intersect: false,
-            backgroundColor: '#0d1322',
-            titleColor: '#00f0ff',
-            borderColor: 'rgba(0, 240, 255, 0.15)',
+            backgroundColor: isDark ? '#0d1322' : 'rgba(255, 255, 255, 0.95)',
+            titleColor: isDark ? '#00f0ff' : '#1d4ed8',
+            bodyColor: isDark ? '#f0f4fc' : '#0f172a',
+            borderColor: isDark ? 'rgba(0, 240, 255, 0.15)' : 'rgba(29, 78, 216, 0.15)',
             borderWidth: 1,
             titleFont: { family: 'Share Tech Mono', size: 9 },
             bodyFont: { family: 'Inter', size: 9 }
@@ -132,12 +138,12 @@ function RulTrendRibbonChart({ history }) {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(77, 96, 124, 0.08)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 8 } }
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 8 } }
           },
           y: {
-            grid: { color: 'rgba(77, 96, 124, 0.08)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 8 } }
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 8 } }
           }
         }
       }
@@ -173,6 +179,12 @@ function HiDecayChart({ history, currentHi }) {
       chartInstanceRef.current.destroy();
     }
 
+    const theme = document.documentElement.getAttribute("data-theme") || "light";
+    const isDark = theme === "dark";
+    const gridColor = isDark ? "rgba(77, 96, 124, 0.08)" : "rgba(100, 116, 139, 0.08)";
+    const tickColor = isDark ? "#8397b5" : "#475569";
+    const titleColor = isDark ? "#546682" : "#5b6b85";
+
     const labels = history.map(h => h.current_cycle);
     const hiData = history.map(h => h.predictions.HealthIndex);
     const thresholdLine = Array(labels.length).fill(70.0);
@@ -186,8 +198,8 @@ function HiDecayChart({ history, currentHi }) {
           {
             label: 'Health Index',
             data: hiData,
-            borderColor: isBelowThreshold ? '#ff3355' : '#00f0ff',
-            backgroundColor: isBelowThreshold ? 'rgba(255, 51, 85, 0.05)' : 'rgba(0, 240, 255, 0.05)',
+            borderColor: isBelowThreshold ? (isDark ? '#ff3355' : '#dc2626') : (isDark ? '#00f0ff' : '#1d4ed8'),
+            backgroundColor: isBelowThreshold ? (isDark ? 'rgba(255, 51, 85, 0.05)' : 'rgba(220, 38, 38, 0.05)') : (isDark ? 'rgba(0, 240, 255, 0.05)' : 'rgba(29, 78, 216, 0.05)'),
             borderWidth: 2.5,
             pointRadius: labels.length > 150 ? 0 : 1,
             fill: true,
@@ -196,7 +208,7 @@ function HiDecayChart({ history, currentHi }) {
           {
             label: 'Alert Threshold (70%)',
             data: thresholdLine,
-            borderColor: '#ff8c00',
+            borderColor: isDark ? '#ff8c00' : '#d97706',
             borderWidth: 1.5,
             borderDash: [5, 5],
             pointRadius: 0,
@@ -213,9 +225,10 @@ function HiDecayChart({ history, currentHi }) {
           tooltip: {
             mode: 'index',
             intersect: false,
-            backgroundColor: '#0d1322',
-            titleColor: '#00f0ff',
-            borderColor: 'rgba(0, 240, 255, 0.15)',
+            backgroundColor: isDark ? '#0d1322' : 'rgba(255, 255, 255, 0.95)',
+            titleColor: isDark ? '#00f0ff' : '#1d4ed8',
+            bodyColor: isDark ? '#f0f4fc' : '#0f172a',
+            borderColor: isDark ? 'rgba(0, 240, 255, 0.15)' : 'rgba(29, 78, 216, 0.15)',
             borderWidth: 1,
             titleFont: { family: 'Share Tech Mono' },
             bodyFont: { family: 'Inter' }
@@ -223,14 +236,14 @@ function HiDecayChart({ history, currentHi }) {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(77, 96, 124, 0.08)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 9 } },
-            title: { display: true, text: 'Operational Cycle Count', color: '#546682', font: { size: 9 } }
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 9 } },
+            title: { display: true, text: 'Operational Cycle Count', color: titleColor, font: { size: 9 } }
           },
           y: {
-            grid: { color: 'rgba(77, 96, 124, 0.08)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 9 } },
-            title: { display: true, text: 'Health Index (%)', color: '#546682', font: { size: 9 } },
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 9 } },
+            title: { display: true, text: 'Health Index (%)', color: titleColor, font: { size: 9 } },
             min: 0,
             max: 100
           }
@@ -271,6 +284,13 @@ function App() {
   const [sensorLimits, setSensorLimits] = useState(null);
   const [dataSourceMap, setDataSourceMap] = useState({});  // Track real vs synthetic per dataset
   const [fleetSortKey, setFleetSortKey] = useState("engine_id"); // For sortable fleet heatmap
+  
+  // Theme check on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const theme = params.get("theme") || "light"; // Default to clinical-engineering light theme
+    document.documentElement.setAttribute("data-theme", theme);
+  }, []);
   
   const [fleetSummary, setFleetSummary] = useState({
     total_engines: 0,
@@ -336,10 +356,10 @@ function App() {
   // Fetch initial fleet lists, alerts, and summary
   const fetchData = async () => {
     try {
-      const sumRes = await fetch("http://localhost:8000/api/fleet/summary");
+      const sumRes = await fetch("http://localhost:8000/api/v1/fleet/summary");
       const sumData = await sumRes.json();
       
-      const engRes = await fetch("http://localhost:8000/api/engines");
+      const engRes = await fetch("http://localhost:8000/api/v1/engines");
       const engData = await engRes.json();
       setEngines(engData);
       
@@ -362,7 +382,7 @@ function App() {
         setActiveEngineId(engData[0].engine_id);
       }
 
-      const alertRes = await fetch("http://localhost:8000/api/alerts");
+      const alertRes = await fetch("http://localhost:8000/api/v1/alerts");
       const alertData = await alertRes.json();
       setAlerts(alertData);
     } catch (err) {
@@ -373,16 +393,16 @@ function App() {
   // Fetch individual engine details
   const fetchEngineDetails = async (id) => {
     try {
-      const statusRes = await fetch(`http://localhost:8000/api/engines/${id}/status`);
+      const statusRes = await fetch(`http://localhost:8000/api/v1/predict/${id}/cycle/last`);
       const statusData = await statusRes.json();
       setEngineStatus(statusData);
       setIsIotActive(statusData.is_iot_mode);
 
-      const histRes = await fetch(`http://localhost:8000/api/engines/${id}/history`);
+      const histRes = await fetch(`http://localhost:8000/api/v1/engines/${id}/history`);
       const histData = await histRes.json();
       setHistory(histData);
 
-      const predRes = await fetch(`http://localhost:8000/api/engines/${id}/prediction`);
+      const predRes = await fetch(`http://localhost:8000/api/v1/engines/${id}/prediction`);
       const predData = await predRes.json();
       setFuturePredictions(predData);
     } catch (err) {
@@ -394,7 +414,7 @@ function App() {
   const handleDatasetChange = async (datasetName) => {
     setIsDatasetLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/dataset/select", {
+      const res = await fetch("http://localhost:8000/api/v1/dataset/select", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataset: datasetName })
@@ -420,7 +440,7 @@ function App() {
   const triggerBenchmark = async () => {
     setIsBenchmarking(true);
     try {
-      const res = await fetch("http://localhost:8000/api/research/benchmark");
+      const res = await fetch("http://localhost:8000/api/v1/research/benchmark");
       const data = await res.json();
       setBenchmarkData(data);
       // Update data source map from benchmark results
@@ -444,12 +464,12 @@ function App() {
     const nextCycle = Math.max(1, Math.min(engineStatus.max_cycles, engineStatus.current_cycle + direction));
     await handleControlSim("pause");
     try {
-      const res = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/cycle/${nextCycle}`, { method: "POST" });
+      const res = await fetch(`http://localhost:8000/api/v1/predict/${activeEngineId}/cycle/${nextCycle}`, { method: "POST" });
       const statusData = await res.json();
       setEngineStatus(statusData);
-      const histRes = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/history?cycle=${nextCycle}`);
+      const histRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/history?cycle=${nextCycle}`);
       setHistory(await histRes.json());
-      const predRes = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/prediction`);
+      const predRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/prediction`);
       setFuturePredictions(await predRes.json());
     } catch (err) {
       console.error("Error stepping cycle:", err);
@@ -543,7 +563,7 @@ function App() {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/simulation/control", {
+      const res = await fetch("http://localhost:8000/api/v1/simulation/control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -600,7 +620,7 @@ function App() {
     };
 
     try {
-      const res = await fetch("http://localhost:8000/api/telemetry", {
+      const res = await fetch("http://localhost:8000/api/v1/telemetry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -764,17 +784,17 @@ function App() {
                 const cycle = parseInt(e.target.value);
                 await handleControlSim("pause");
                 try {
-                  const res = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/cycle/${cycle}`, {
+                  const res = await fetch(`http://localhost:8000/api/v1/predict/${activeEngineId}/cycle/${cycle}`, {
                     method: "POST"
                   });
                   const statusData = await res.json();
                   setEngineStatus(statusData);
                   
-                  const histRes = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/history?cycle=${cycle}`);
+                  const histRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/history?cycle=${cycle}`);
                   const histData = await histRes.json();
                   setHistory(histData);
                   
-                  const predRes = await fetch(`http://localhost:8000/api/engines/${activeEngineId}/prediction`);
+                  const predRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/prediction`);
                   const predData = await predRes.json();
                   setFuturePredictions(predData);
                 } catch (err) {
@@ -1073,7 +1093,7 @@ function App() {
                     <Icon name="heart-pulse" /> Sensor Attributions (SHAP/PMA Explainer)
                   </h4>
                   <div className="shap-grid">
-                    {Object.entries(engineStatus.explainers.anomaly_shap).map(([sensor, val]) => {
+                    {Object.entries(engineStatus.explainers?.anomaly_shap || {}).map(([sensor, val]) => {
                       // Map val range (-30 to 30) to HSL heat color
                       // Positive values driving anomalies = red/orange
                       // Near-zero = gray
@@ -1106,7 +1126,7 @@ function App() {
                   {/* Top Anomaly Drivers */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
                     <span style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Top Anomaly Drivers</span>
-                    {engineStatus.explainers.top_anomaly_drivers.map((drv, i) => (
+                    {(engineStatus.explainers?.top_anomaly_drivers || []).map((drv, i) => (
                       <div key={i} className="shap-driver-item">
                         <span>{drv.sensor} - {(sensorLimits?.[activeDataset]?.[drv.sensor]?.label || SENSOR_METADATA[drv.sensor]?.label)}</span>
                         <span style={{ color: 'var(--accent-red)' }}>+{drv.val} SHAP</span>
@@ -1776,6 +1796,12 @@ function TrendChart({ title, history, future, sensorKey }) {
       chartInstanceRef.current.destroy();
     }
 
+    const theme = document.documentElement.getAttribute("data-theme") || "light";
+    const isDark = theme === "dark";
+    const gridColor = isDark ? "rgba(77, 96, 124, 0.1)" : "rgba(100, 116, 139, 0.1)";
+    const tickColor = isDark ? "#8397b5" : "#475569";
+    const titleColor = isDark ? "#546682" : "#5b6b85";
+
     const labels = history.map(h => h.current_cycle);
     const dataVals = history.map(h => h.sensors[sensorKey] || null);
 
@@ -1792,8 +1818,8 @@ function TrendChart({ title, history, future, sensorKey }) {
           {
             label: `Observed Telemetry`,
             data: [...dataVals, ...Array(Math.max(0, futureVals.length - 1)).fill(null)],
-            borderColor: '#00f0ff',
-            backgroundColor: 'rgba(0, 240, 255, 0.05)',
+            borderColor: isDark ? '#00f0ff' : '#1d4ed8',
+            backgroundColor: isDark ? 'rgba(0, 240, 255, 0.05)' : 'rgba(29, 78, 216, 0.05)',
             borderWidth: 2,
             pointRadius: 1,
             pointHoverRadius: 5,
@@ -1808,7 +1834,7 @@ function TrendChart({ title, history, future, sensorKey }) {
               const drift = sensorKey === "T30" || sensorKey === "T50" || sensorKey === "Vibration" ? 25 * step : -10 * step;
               return lastObs + drift;
             }).slice(1)],
-            borderColor: '#ff8c00',
+            borderColor: isDark ? '#ff8c00' : '#d97706',
             borderWidth: 2,
             borderDash: [5, 5],
             pointRadius: 0,
@@ -1825,9 +1851,10 @@ function TrendChart({ title, history, future, sensorKey }) {
           tooltip: {
             mode: 'index',
             intersect: false,
-            backgroundColor: '#0d1322',
-            titleColor: '#00f0ff',
-            borderColor: 'rgba(0, 240, 255, 0.2)',
+            backgroundColor: isDark ? '#0d1322' : 'rgba(255, 255, 255, 0.95)',
+            titleColor: isDark ? '#00f0ff' : '#1d4ed8',
+            bodyColor: isDark ? '#f0f4fc' : '#0f172a',
+            borderColor: isDark ? 'rgba(0, 240, 255, 0.2)' : 'rgba(29, 78, 216, 0.2)',
             borderWidth: 1,
             titleFont: { family: 'Share Tech Mono' },
             bodyFont: { family: 'Inter' }
@@ -1835,14 +1862,14 @@ function TrendChart({ title, history, future, sensorKey }) {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(77, 96, 124, 0.1)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 10 } },
-            title: { display: true, text: 'Operational Cycle Count', color: '#546682', font: { size: 9 } }
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 10 } },
+            title: { display: true, text: 'Operational Cycle Count', color: titleColor, font: { size: 9 } }
           },
           y: {
-            grid: { color: 'rgba(77, 96, 124, 0.1)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 10 } },
-            title: { display: true, text: `Reading`, color: '#546682', font: { size: 9 } }
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 10 } },
+            title: { display: true, text: `Reading`, color: titleColor, font: { size: 9 } }
           }
         }
       }
@@ -1884,6 +1911,12 @@ function RulChart({ title, history, maxCycles }) {
       chartInstanceRef.current.destroy();
     }
 
+    const theme = document.documentElement.getAttribute("data-theme") || "light";
+    const isDark = theme === "dark";
+    const gridColor = isDark ? "rgba(77, 96, 124, 0.1)" : "rgba(100, 116, 139, 0.1)";
+    const tickColor = isDark ? "#8397b5" : "#475569";
+    const titleColor = isDark ? "#546682" : "#5b6b85";
+
     const labels = history.map(h => h.current_cycle);
     const predRul = history.map(h => h.predictions.RUL_predicted);
     const predP10 = history.map(h => h.predictions.RUL_p10 || h.predictions.RUL_predicted - 15.0);
@@ -1900,7 +1933,7 @@ function RulChart({ title, history, maxCycles }) {
           {
             label: `True EOL`,
             data: trueRul,
-            borderColor: 'rgba(77, 96, 124, 0.4)',
+            borderColor: isDark ? 'rgba(77, 96, 124, 0.4)' : 'rgba(100, 116, 139, 0.4)',
             borderWidth: 1.5,
             borderDash: [3, 3],
             pointRadius: 0,
@@ -1909,7 +1942,7 @@ function RulChart({ title, history, maxCycles }) {
           {
             label: `P90 Upper Bound`,
             data: predP90,
-            borderColor: 'rgba(0, 240, 255, 0.4)',
+            borderColor: isDark ? 'rgba(0, 240, 255, 0.4)' : 'rgba(29, 78, 216, 0.4)',
             borderWidth: 1,
             borderDash: [2, 2],
             pointRadius: 0,
@@ -1918,7 +1951,7 @@ function RulChart({ title, history, maxCycles }) {
           {
             label: `P10 Lower Bound`,
             data: predP10,
-            borderColor: 'rgba(255, 51, 85, 0.4)',
+            borderColor: isDark ? 'rgba(255, 51, 85, 0.4)' : 'rgba(220, 38, 38, 0.4)',
             borderWidth: 1,
             borderDash: [2, 2],
             pointRadius: 0,
@@ -1927,8 +1960,8 @@ function RulChart({ title, history, maxCycles }) {
           {
             label: `P50 Predicted RUL (UQ Median)`,
             data: predRul,
-            borderColor: '#0088ff',
-            backgroundColor: 'rgba(0, 136, 255, 0.06)',
+            borderColor: isDark ? '#0088ff' : '#2563eb',
+            backgroundColor: isDark ? 'rgba(0, 136, 255, 0.06)' : 'rgba(37, 99, 235, 0.06)',
             borderWidth: 2.5,
             pointRadius: labels.length > 200 ? 0 : 1.5,
             fill: true,
@@ -1944,9 +1977,10 @@ function RulChart({ title, history, maxCycles }) {
           tooltip: {
             mode: 'index',
             intersect: false,
-            backgroundColor: '#0d1322',
-            titleColor: '#0088ff',
-            borderColor: 'rgba(0, 136, 255, 0.2)',
+            backgroundColor: isDark ? '#0d1322' : 'rgba(255, 255, 255, 0.95)',
+            titleColor: isDark ? '#0088ff' : '#2563eb',
+            bodyColor: isDark ? '#f0f4fc' : '#0f172a',
+            borderColor: isDark ? 'rgba(0, 136, 255, 0.2)' : 'rgba(37, 99, 235, 0.2)',
             borderWidth: 1,
             titleFont: { family: 'Share Tech Mono' },
             bodyFont: { family: 'Inter' }
@@ -1954,14 +1988,14 @@ function RulChart({ title, history, maxCycles }) {
         },
         scales: {
           x: {
-            grid: { color: 'rgba(77, 96, 124, 0.1)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 10 } },
-            title: { display: true, text: 'Operational Cycle Count', color: '#546682', font: { size: 9 } }
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 10 } },
+            title: { display: true, text: 'Operational Cycle Count', color: titleColor, font: { size: 9 } }
           },
           y: {
-            grid: { color: 'rgba(77, 96, 124, 0.1)' },
-            ticks: { color: '#8397b5', font: { family: 'Share Tech Mono', size: 10 } },
-            title: { display: true, text: 'Remaining Cycles', color: '#546682', font: { size: 9 } },
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { family: 'Share Tech Mono', size: 10 } },
+            title: { display: true, text: 'Remaining Cycles', color: titleColor, font: { size: 9 } },
             min: 0,
             max: maxCycles
           }

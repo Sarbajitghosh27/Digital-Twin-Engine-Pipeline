@@ -3,6 +3,7 @@ import sys
 import asyncio
 import json
 import math
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 import time
 import random
@@ -10,8 +11,9 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sklearn.ensemble import IsolationForest
@@ -22,8 +24,9 @@ from aiml_core.models import LSTMAutoencoder, BayesianLSTM
 from aiml_core.explainers import PMAExplainer
 from aiml_core.data_loader import DatasetManager, normalize_regimes, prepare_sliding_windows, CMAPSS_SENSORS, NCMAPSS_SENSORS
 from aiml_core.config import CONFIG
-from aiml_core.train_utils import get_or_train_models
+from aiml_core.train_utils import get_or_train_models, get_checkpoint_paths, get_calibration_metrics
 from aiml_core.benchmark import generate_benchmark_tables, compute_nasa_score, mc_dropout_predict, compute_calibration_metrics
+from aiml_core.faithfulness import compute_integrated_gradients_attributions
 
 app = FastAPI(title="Prognostics Digital Twin API")
 
@@ -58,6 +61,13 @@ test_df_global: Optional[pd.DataFrame] = None
 # Engine State Tracking
 ACTIVE_ENGINE_ID = 1
 
+# Explainability cache & JSON persistence
+EXPLAINABILITY_CACHE: Dict[str, Dict] = {}
+
+# Fleet summary memory cache
+FLEET_SUMMARY_CACHE: Optional[Dict] = None
+FLEET_SUMMARY_CACHE_SIGNATURE: str = ""
+
 # Load sensor limits config JSON on startup
 sensor_limits = {}
 try:
@@ -66,6 +76,51 @@ try:
         sensor_limits = json.load(f)
 except Exception as e:
     print(f"Error loading sensor limits in backend: {e}")
+
+
+def get_file_sha256(filepath: str) -> str:
+    """Computes the SHA256 hash of a file's actual weight contents to avoid redundant invalidations."""
+    if not os.path.exists(filepath):
+        return "not_found"
+    sha256 = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+def get_active_models_hash(dataset_name: str) -> str:
+    """Retrieves combined SHA256 hash of the active AE and LSTM model weights checkpoints."""
+    ae_path, lstm_path, _ = get_checkpoint_paths(dataset_name, 42)
+    ae_hash = get_file_sha256(ae_path)
+    lstm_hash = get_file_sha256(lstm_path)
+    return f"{ae_hash}_{lstm_hash}"
+
+
+def load_explainability_cache():
+    """Loads the offline Integrated Gradients cache from JSON."""
+    global EXPLAINABILITY_CACHE
+    cache_path = os.path.join(CONFIG["checkpoints_dir"], "explainability_cache.json")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r") as f:
+                EXPLAINABILITY_CACHE = json.load(f)
+            print(f"[cache] Loaded {len(EXPLAINABILITY_CACHE)} cached explainability entries.")
+        except Exception as e:
+            print(f"[cache] Failed to load explainability cache: {e}")
+            EXPLAINABILITY_CACHE = {}
+
+
+def save_explainability_cache():
+    """Saves the explainability cache to JSON."""
+    cache_path = os.path.join(CONFIG["checkpoints_dir"], "explainability_cache.json")
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "w") as f:
+            json.dump(EXPLAINABILITY_CACHE, f, indent=2)
+    except Exception as e:
+        print(f"[cache] Failed to save explainability cache: {e}")
+
 
 class EngineTwinState:
     def __init__(self, engine_id: int, df_subset: pd.DataFrame):
@@ -95,7 +150,6 @@ class EngineTwinState:
             # Fallback to last cycle if not found
             row = self.df_subset.iloc[-1:]
             
-        # Extract sensor list
         sensors = {}
         sensor_list = NCMAPSS_SENSORS if ACTIVE_DATASET == "N-CMAPSS_DS01" else CMAPSS_SENSORS
         for s in sensor_list:
@@ -127,7 +181,7 @@ engines_db: Dict[int, EngineTwinState] = {}
 
 def initialize_models_and_data(dataset_name: str):
     """Loads dataset and loads pre-trained checkpoints (or trains them if missing)."""
-    global ACTIVE_DATASET, train_df_global, test_df_global, ae_model, lstm_model, mean_recon_err, ae_threshold, anomaly_model, test_sensor_mean, test_sensor_std, engines_db
+    global ACTIVE_DATASET, train_df_global, test_df_global, ae_model, lstm_model, mean_recon_err, ae_threshold, anomaly_model, test_sensor_mean, test_sensor_std, engines_db, FLEET_SUMMARY_CACHE_SIGNATURE
     
     ACTIVE_DATASET = dataset_name
     print(f"Loading data for {dataset_name}...")
@@ -155,6 +209,9 @@ def initialize_models_and_data(dataset_name: str):
         dataset_name, seed=42, dm=dm, force_retrain=False
     )
     
+    # Load or compute explainability JSON cache
+    load_explainability_cache()
+    
     # 2. Fit Anomaly Detection (Isolation Forest) on first 50 cycles of training data (healthy engine states)
     print("Fitting Isolation Forest Anomaly Scorer...")
     healthy_data = norm_train[norm_train["cycle"] <= 50][sensor_list].values
@@ -170,13 +227,14 @@ def initialize_models_and_data(dataset_name: str):
         eid_int = int(eid)
         engines_db[eid_int] = EngineTwinState(eid_int, test_df[test_df["engine_id"] == eid_int])
         
+    FLEET_SUMMARY_CACHE_SIGNATURE = "" # Reset memory cache
     print(f"Digital Twin Models successfully initialized for {dataset_name}!")
 
 # Run initial load on FD001
 initialize_models_and_data("FD001")
 
 
-# --- CORE INFERENCE LOGIC (MC DROPOUT & PMA SHAP) ---
+# --- CORE INFERENCE LOGIC (MC DROPOUT & INTEGRATED GRADIENTS CACHING) ---
 
 def run_mc_dropout_prediction(hi_window: np.ndarray, num_samples: int = 30) -> Tuple[float, float, float, float]:
     """
@@ -184,8 +242,6 @@ def run_mc_dropout_prediction(hi_window: np.ndarray, num_samples: int = 30) -> T
     Returns:
         P10, Mean (predicted RUL), P90, and standard deviation.
     """
-    # hi_window shape: (30, 1)
-    # Replicate the window along batch dimension: shape (num_samples, 30, 1)
     x_t = torch.FloatTensor(hi_window).unsqueeze(0).repeat(num_samples, 1, 1).to(device)
     
     lstm_model.eval()
@@ -193,11 +249,9 @@ def run_mc_dropout_prediction(hi_window: np.ndarray, num_samples: int = 30) -> T
         preds = lstm_model(x_t, mc_dropout=True) # shape: (num_samples, 1)
         samples = preds.squeeze().cpu().numpy()
         
-    # Compute mean and std
     mean = float(np.mean(samples))
     std = float(np.std(samples))
     
-    # Return p10 and p90 as uncertainty bounds, clipped to [0.0, 150.0]
     p10 = float(np.clip(mean - 1.96 * std, 0.0, 150.0))
     p90 = float(np.clip(mean + 1.96 * std, 0.0, 150.0))
     
@@ -209,35 +263,30 @@ def get_engine_metrics_and_explanations(engine_id: int, cycle: int, explain: boo
     1. Health Index via LSTM Autoencoder
     2. Probabilistic RUL bounds via MC Dropout LSTM
     3. Anomaly scores via Isolation Forest
-    4. SHAP feature attributions via PMA Explainer for both RUL and Anomalies
+    4. Integrated Gradients attributions cached dynamically.
     """
     engine = engines_db[engine_id]
     
-    # Cache key check (only use cache when not in IoT mode)
+    # Cache key check (only use local state cache when not in IoT mode)
     if not engine.is_iot_mode and cycle in engine.cache:
         cached_val = engine.cache[cycle]
         if not explain or "explainers" in cached_val:
             return cached_val
             
     sensor_list = CMAPSS_SENSORS
-    is_ncmapss = (ACTIVE_DATASET == "N-CMAPSS_DS01")
     
     # Extract the sequence of raw sensor values ending at current cycle (up to window 30)
     cycles_to_load = list(range(max(1, cycle - 29), cycle + 1))
-    # Pad if sequence is too short
     while len(cycles_to_load) < 30:
         cycles_to_load.insert(0, cycles_to_load[0])
         
-    # Build the sensor sequence matrix
     sensor_sequence = []
     for c in cycles_to_load:
         sens = engine.get_sensors_at_cycle(c)
-        # Convert dict to array matching order of CMAPSS_SENSORS
         sensor_sequence.append([sens[k] for k in sensor_list])
         
     sensor_sequence = np.array(sensor_sequence) # Shape: (30, 14)
     
-    # Normalize sensors using global scaling parameters
     sensor_seq_norm = (sensor_sequence - test_sensor_mean) / test_sensor_std
     
     # 1. Compute Health Index sequence
@@ -248,7 +297,6 @@ def get_engine_metrics_and_explanations(engine_id: int, cycle: int, explain: boo
     err_offset = mean_recon_err * 0.95
     with torch.no_grad():
         for i in range(len(sensor_seq_norm)):
-            # Pad early elements
             if i < 29:
                 hi_seq.append(100.0)
             else:
@@ -259,7 +307,7 @@ def get_engine_metrics_and_explanations(engine_id: int, cycle: int, explain: boo
                 hi_seq.append(hi)
                 
     current_hi = round(hi_seq[-1], 2)
-    hi_window = np.array(hi_seq).reshape(-1, 1) # Shape: (30, 1)
+    hi_window = np.array(hi_seq).reshape(-1, 1)
     
     # 2. Run MC Dropout for RUL
     p10, p50, p90, std_dev = run_mc_dropout_prediction(hi_window)
@@ -267,13 +315,10 @@ def get_engine_metrics_and_explanations(engine_id: int, cycle: int, explain: boo
     # 3. Compute Anomaly Score
     current_sensor_val = sensor_seq_norm[-1].reshape(1, -1)
     raw_anomaly_score = float(anomaly_model.score_samples(current_sensor_val)[0])
-    # Map score_samples range (typically -0.8 to -0.3) to 0 - 100% anomaly score
     anomaly_score = max(0.0, min(100.0, (0.45 - raw_anomaly_score) * 180.0))
     
-    # Sigmoid failure probability in next 30 cycles
     failure_prob = round(100.0 / (1.0 + math.exp((p50 - 30.0) / 10.0)), 2)
     
-    # Map raw sensor values back to output dictionary
     raw_sensors = engine.get_sensors_at_cycle(cycle)
     components = engine.get_components_at_cycle(cycle)
     
@@ -298,57 +343,58 @@ def get_engine_metrics_and_explanations(engine_id: int, cycle: int, explain: boo
         }
     }
     
-    # 4. PMA EXPLANATIONS (SHAP)
+    # 4. CACHED INTEGRATED GRADIENTS & SHAP EXPLANATIONS
     if explain:
-        # Baseline normal state (mean of healthy sensors)
-        baseline_sensor_val = np.zeros((1, len(sensor_list))) # Normalized baseline is zeros
+        # Check explainability JSON cache
+        model_hash = get_active_models_hash(ACTIVE_DATASET)
+        cache_key = f"{model_hash}_{engine_id}_{cycle}"
         
-        # Anomaly SHAP Attribution
-        def anomaly_scorer_func(x):
-            # x shape (batch, num_sensors)
-            scores = anomaly_model.score_samples(x)
-            return np.maximum(0.0, np.minimum(100.0, (0.45 - scores) * 180.0))
+        if cache_key in EXPLAINABILITY_CACHE:
+            result["explainers"] = EXPLAINABILITY_CACHE[cache_key]
+        else:
+            # Baseline normal state (mean of healthy sensors)
+            baseline_sensor_val = np.zeros((1, len(sensor_list)))
             
-        anomaly_explainer = PMAExplainer(anomaly_scorer_func, baseline_sensor_val)
-        anomaly_shaps = anomaly_explainer.explain(current_sensor_val)
-        
-        # RUL SHAP Attribution (explain how current sensors reduce the RUL from baseline)
-        # We define a function mapping raw sensor window to predicted RUL
-        def sensor_to_rul_func(x_norm_3d):
-            # x_norm_3d shape: (1, 30, 14)
-            x_norm_t = torch.FloatTensor(x_norm_3d).to(device)
-            with torch.no_grad():
-                recon_3d = ae_model(x_norm_t)
-                errs = torch.mean((recon_3d - x_norm_t) ** 2, dim=2).squeeze(0).cpu().numpy()
+            # Anomaly SHAP Attribution via PMA (Isolation Forest)
+            def anomaly_scorer_func(x):
+                scores = anomaly_model.score_samples(x)
+                return np.maximum(0.0, np.minimum(100.0, (0.45 - scores) * 180.0))
                 
-            hi_list = []
-            err_offset_shap = mean_recon_err * 0.95
-            for e in errs:
-                hi_list.append(100.0 * np.exp(-max(0.0, e - err_offset_shap) / ae_threshold))
-                
-            hi_arr_t = torch.FloatTensor(hi_list).unsqueeze(0).unsqueeze(2).to(device)
-            with torch.no_grad():
-                pred_r = lstm_model(hi_arr_t, mc_dropout=False)
-            return float(pred_r.item())
+            anomaly_explainer = PMAExplainer(anomaly_scorer_func, baseline_sensor_val)
+            anomaly_shaps = anomaly_explainer.explain(current_sensor_val)
             
-        baseline_sensor_seq = np.zeros((1, 30, len(sensor_list))) # fully normalized healthy baseline
-        current_sensor_seq = sensor_seq_norm.reshape(1, 30, -1)
-        
-        rul_explainer = PMAExplainer(sensor_to_rul_func, baseline_sensor_seq)
-        rul_shaps = rul_explainer.explain(current_sensor_seq)
-        
-        # Rank top 3 sensors for anomaly
-        sensor_shap_pairs = list(zip(sensor_list, anomaly_shaps))
-        sensor_shap_pairs.sort(key=lambda x: abs(x[1]), reverse=True)
-        top_drivers = [{"sensor": k, "val": round(v, 2)} for k, v in sensor_shap_pairs[:3]]
-        
-        result["explainers"] = {
-            "anomaly_shap": {k: float(v) for k, v in zip(sensor_list, anomaly_shaps)},
-            "rul_shap": {k: float(v) for k, v in zip(sensor_list, rul_shaps)},
-            "top_anomaly_drivers": top_drivers
-        }
+            # True Integrated Gradients for Deep-Learning RUL predictor
+            current_sensor_seq = sensor_seq_norm.reshape(1, 30, -1)
+            try:
+                rul_shaps = compute_integrated_gradients_attributions(
+                    ae_model, lstm_model, current_sensor_seq, ae_threshold, mean_recon_err, steps=25
+                )
+            except Exception as e:
+                print(f"[IG] Failed to compute Integrated Gradients, falling back to zeros: {e}")
+                rul_shaps = np.zeros(len(sensor_list))
+            
+            # Top Anomaly Drivers
+            sensor_shap_pairs = list(zip(sensor_list, anomaly_shaps))
+            sensor_shap_pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+            top_drivers = [{"sensor": k, "val": round(v, 2)} for k, v in sensor_shap_pairs[:3]]
+            
+            explainers_dict = {
+                "anomaly_shap": {k: float(v) for k, v in zip(sensor_list, anomaly_shaps)},
+                "rul_shap": {k: float(v) for k, v in zip(sensor_list, rul_shaps)},
+                "top_anomaly_drivers": top_drivers
+            }
+            
+            # Persist to cache
+            EXPLAINABILITY_CACHE[cache_key] = explainers_dict
+            save_explainability_cache()
+            
+            result["explainers"] = explainers_dict
     else:
-        result["explainers"] = {}
+        result["explainers"] = {
+            "anomaly_shap": {},
+            "rul_shap": {},
+            "top_anomaly_drivers": []
+        }
         
     if not engine.is_iot_mode:
         engine.cache[cycle] = result
@@ -368,7 +414,8 @@ class SimManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
         dead = []
@@ -409,9 +456,8 @@ class SimManager:
             await asyncio.sleep(self.speed)
 
 sim_manager = SimManager()
-
-# Thread pool for running CPU-bound inference without blocking the event loop
 _thread_pool = ThreadPoolExecutor(max_workers=4)
+
 
 # --- REST API ENDPOINTS ---
 
@@ -422,26 +468,111 @@ class IoTTelemetryInput(BaseModel):
     components: Dict[str, float]
     predictions: Dict[str, float]
 
+
+# --- UNVERSIONED LEGACY ENDPOINTS (307 REDIRECTS FOR GET, 410 GONE FOR POST) ---
+
+@app.get("/api/fleet/summary")
+async def legacy_fleet_summary():
+    return RedirectResponse(url="/api/v1/fleet/summary", status_code=307)
+
+@app.get("/api/engines")
+async def legacy_engines_list():
+    return RedirectResponse(url="/api/v1/engines", status_code=307)
+
+@app.get("/api/engines/{engine_id}/status")
+async def legacy_engine_status(engine_id: int):
+    return RedirectResponse(url=f"/api/v1/predict/{engine_id}/cycle/last", status_code=307)
+
+@app.get("/api/engines/{engine_id}/cycle/{cycle}")
+async def legacy_get_engine_cycle(engine_id: int, cycle: int):
+    return RedirectResponse(url=f"/api/v1/predict/{engine_id}/cycle/{cycle}", status_code=307)
+
+@app.post("/api/engines/{engine_id}/cycle/{cycle}")
+async def legacy_post_engine_cycle(engine_id: int, cycle: int):
+    return JSONResponse(
+        status_code=410,
+        content={"detail": "Unversioned POST endpoints are deprecated. Please post to /api/v1/engines/{engine_id}/cycle/{cycle} instead."}
+    )
+
+@app.get("/api/engines/{engine_id}/history")
+async def legacy_engine_history(engine_id: int, cycle: Optional[int] = None):
+    url = f"/api/v1/engines/{engine_id}/history"
+    if cycle is not None:
+        url += f"?cycle={cycle}"
+    return RedirectResponse(url=url, status_code=307)
+
+@app.get("/api/engines/{engine_id}/prediction")
+async def legacy_engine_prediction(engine_id: int):
+    return RedirectResponse(url=f"/api/v1/engines/{engine_id}/prediction", status_code=307)
+
+@app.get("/api/alerts")
+async def legacy_alerts():
+    return RedirectResponse(url="/api/v1/alerts", status_code=307)
+
+@app.post("/api/telemetry")
+async def legacy_telemetry(data: dict):
+    return JSONResponse(
+        status_code=410,
+        content={"detail": "Unversioned POST endpoints are deprecated. Please post to /api/v1/telemetry instead."}
+    )
+
+@app.post("/api/simulation/control")
+async def legacy_sim_control(control: dict):
+    return JSONResponse(
+        status_code=410,
+        content={"detail": "Unversioned POST endpoints are deprecated. Please post to /api/v1/simulation/control instead."}
+    )
+
+@app.post("/api/dataset/select")
+async def legacy_dataset_select(payload: dict):
+    return JSONResponse(
+        status_code=410,
+        content={"detail": "Unversioned POST endpoints are deprecated. Please post to /api/v1/dataset/select instead."}
+    )
+
+@app.get("/api/research/benchmark")
+async def legacy_benchmark():
+    return RedirectResponse(url="/api/v1/research/benchmark", status_code=307)
+
+
+# --- VERSIONED API V1 ENDPOINTS ---
+
 @app.get("/")
+@app.get("/api/v1")
 async def get_root():
     return {
         "status": "online",
         "service": "Aero-Twin Predictive Inference Engine API",
+        "version": "v1",
         "active_dataset": ACTIVE_DATASET,
         "engines_monitored": len(engines_db)
     }
 
-@app.post("/api/dataset/select")
-def select_dataset(payload: dict):
+@app.post("/api/v1/dataset/select")
+def select_dataset_v1(payload: dict):
     dataset_name = payload.get("dataset", "FD001")
     if dataset_name not in ["FD001", "FD002", "FD003", "FD004", "N-CMAPSS_DS01"]:
         raise HTTPException(status_code=400, detail="Invalid dataset selected")
-        
     initialize_models_and_data(dataset_name)
     return {"status": "success", "active_dataset": ACTIVE_DATASET}
 
-@app.get("/api/fleet/summary")
-async def get_fleet_summary():
+@app.get("/api/v1/fleet/summary")
+async def get_fleet_summary_v1():
+    """
+    Computes fleet health summary with thread safety and caching.
+    Uses current engine cycles state as signature to invalidate the cache.
+    """
+    global FLEET_SUMMARY_CACHE, FLEET_SUMMARY_CACHE_SIGNATURE
+    
+    # Calculate state signature of all engine cycles
+    current_signature = "_".join(
+        f"{eid}:{eng.current_cycle}:{eng.is_iot_mode}" 
+        for eid, eng in sorted(engines_db.items())
+    )
+    
+    if FLEET_SUMMARY_CACHE is not None and current_signature == FLEET_SUMMARY_CACHE_SIGNATURE:
+        return FLEET_SUMMARY_CACHE
+
     loop = asyncio.get_event_loop()
     def _compute():
         total_engines = len(engines_db)
@@ -469,7 +600,6 @@ async def get_fleet_summary():
                 total_health += pred["HealthIndex"]
                 successful_engines += 1
 
-                # Check critical sensor limit violations
                 has_critical = False
                 dataset_limits = sensor_limits.get(ACTIVE_DATASET)
                 if dataset_limits:
@@ -499,39 +629,96 @@ async def get_fleet_summary():
             "is_running": sim_manager.is_running,
             "active_dataset": ACTIVE_DATASET
         }
-    return await loop.run_in_executor(_thread_pool, _compute)
+        
+    res = await loop.run_in_executor(_thread_pool, _compute)
+    FLEET_SUMMARY_CACHE = res
+    FLEET_SUMMARY_CACHE_SIGNATURE = current_signature
+    return res
 
-@app.get("/api/engines")
-def get_engines_list():
+@app.get("/api/v1/engines")
+def get_engines_list_v1():
     return [
         {"engine_id": eid, "current_cycle": eng.current_cycle, "max_cycles": eng.max_cycles, "is_iot_mode": eng.is_iot_mode}
-        for eid, eng in engines_db.items()
+        for eid, eng in sorted(engines_db.items())
     ]
 
-@app.get("/api/engines/{engine_id}/status")
-def get_engine_status(engine_id: int):
+@app.get("/api/v1/predict/{engine_id}/cycle/{cycle}")
+@app.post("/api/v1/predict/{engine_id}/cycle/{cycle}")
+def get_predict_v1(engine_id: int, cycle: str):
+    """Returns predictions (Health Index, RUL, Anomaly) for engine at cycle."""
     if engine_id not in engines_db:
         raise HTTPException(status_code=404, detail="Engine twin not found")
     eng = engines_db[engine_id]
-    global ACTIVE_ENGINE_ID
-    ACTIVE_ENGINE_ID = engine_id
-    return get_engine_metrics_and_explanations(engine_id, eng.current_cycle, explain=True)
-
-@app.get("/api/engines/{engine_id}/cycle/{cycle}")
-@app.post("/api/engines/{engine_id}/cycle/{cycle}")
-def set_engine_cycle(engine_id: int, cycle: int):
-    if engine_id not in engines_db:
-        raise HTTPException(status_code=404, detail="Engine twin not found")
-    eng = engines_db[engine_id]
-    if cycle < 1 or cycle > eng.max_cycles:
+    
+    if cycle == "last":
+        target_cycle = eng.current_cycle
+    else:
+        try:
+            target_cycle = int(cycle)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cycle path parameter")
+            
+    if target_cycle < 1 or target_cycle > eng.max_cycles:
         raise HTTPException(status_code=400, detail="Invalid cycle number")
-    eng.current_cycle = cycle
+        
+    # Update active engine tracker
     global ACTIVE_ENGINE_ID
     ACTIVE_ENGINE_ID = engine_id
-    return get_engine_metrics_and_explanations(engine_id, cycle, explain=True)
+    eng.current_cycle = target_cycle
+    
+    return get_engine_metrics_and_explanations(engine_id, target_cycle, explain=True)
 
-@app.get("/api/engines/{engine_id}/history")
-def get_engine_history(engine_id: int, cycle: Optional[int] = None):
+@app.get("/api/v1/explain/{engine_id}/cycle/{cycle}")
+def get_explain_v1(engine_id: int, cycle: str):
+    """Returns attributions (SHAP values & Integrated Gradients) for engine at cycle."""
+    if engine_id not in engines_db:
+        raise HTTPException(status_code=404, detail="Engine twin not found")
+    eng = engines_db[engine_id]
+    
+    if cycle == "last":
+        target_cycle = eng.current_cycle
+    else:
+        try:
+            target_cycle = int(cycle)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cycle path parameter")
+            
+    status = get_engine_metrics_and_explanations(engine_id, target_cycle, explain=True)
+    return status["explainers"]
+
+@app.get("/api/v1/uncertainty/{engine_id}/cycle/{cycle}")
+def get_uncertainty_v1(engine_id: int, cycle: str):
+    """Returns MC-Dropout sample bounds and UQ calibration metrics (PICP/sharpness)."""
+    if engine_id not in engines_db:
+        raise HTTPException(status_code=404, detail="Engine twin not found")
+    eng = engines_db[engine_id]
+    
+    if cycle == "last":
+        target_cycle = eng.current_cycle
+    else:
+        try:
+            target_cycle = int(cycle)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid cycle path parameter")
+            
+    status = get_engine_metrics_and_explanations(engine_id, target_cycle, explain=False)
+    preds = status["predictions"]
+    
+    # Load or compute dataset calibration metrics
+    cal_metrics = get_calibration_metrics(ACTIVE_DATASET, seed=42, dm=dm)
+    
+    return {
+        "engine_id": engine_id,
+        "cycle": target_cycle,
+        "rul_predicted": preds["RUL_predicted"],
+        "rul_p10": preds["RUL_p10"],
+        "rul_p90": preds["RUL_p90"],
+        "hi_uncertainty_std": preds["hi_uncertainty"],
+        "calibration": cal_metrics
+    }
+
+@app.get("/api/v1/engines/{engine_id}/history")
+def get_engine_history_v1(engine_id: int, cycle: Optional[int] = None):
     if engine_id not in engines_db:
         raise HTTPException(status_code=404, detail="Engine twin not found")
     eng = engines_db[engine_id]
@@ -544,15 +731,13 @@ def get_engine_history(engine_id: int, cycle: Optional[int] = None):
             pass
     return history
 
-@app.get("/api/engines/{engine_id}/prediction")
-def get_engine_future_projection(engine_id: int):
-    """Generates the future remaining lifetime trajectory forecast with uncertainty bands."""
+@app.get("/api/v1/engines/{engine_id}/prediction")
+def get_engine_future_projection_v1(engine_id: int):
     if engine_id not in engines_db:
         raise HTTPException(status_code=404, detail="Engine twin not found")
     eng = engines_db[engine_id]
     
     future = []
-    # Project 40 cycles forward or up to end-of-life
     start_cycle = eng.current_cycle
     end_cycle = min(eng.max_cycles, start_cycle + 45)
     
@@ -568,15 +753,14 @@ def get_engine_future_projection(engine_id: int):
             pass
     return future
 
-@app.get("/api/alerts")
-def get_alerts():
+@app.get("/api/v1/alerts")
+def get_alerts_v1():
     alerts_list = []
     for eid, eng in engines_db.items():
         try:
             status = get_engine_metrics_and_explanations(eid, eng.current_cycle, explain=False)
             pred = status["predictions"]
             
-            # Anomaly alert
             if pred["AnomalyScore"] > 70.0:
                 status_full = get_engine_metrics_and_explanations(eid, eng.current_cycle, explain=True)
                 top_3 = [d["sensor"] for d in status_full["explainers"]["top_anomaly_drivers"]]
@@ -588,7 +772,6 @@ def get_alerts():
                     "timestamp": time.time()
                 })
                 
-            # Low RUL alert
             if pred["RUL_predicted"] < 35.0:
                 alerts_list.append({
                     "engine_id": eid,
@@ -603,12 +786,12 @@ def get_alerts():
     alerts_list.sort(key=lambda x: (0 if x["severity"] == "critical" else 1, -x["timestamp"]))
     return alerts_list[:30]
 
-@app.post("/api/telemetry")
-async def post_iot_telemetry(data: IoTTelemetryInput):
+@app.post("/api/v1/telemetry")
+async def post_iot_telemetry_v1(data: IoTTelemetryInput):
+    global FLEET_SUMMARY_CACHE_SIGNATURE
     eid = data.engine_id
     if eid not in engines_db:
-        # Create dynamically from fallback df
-        train_df, test_df = dm.get_dataset(ACTIVE_DATASET)
+        _, test_df = dm.get_dataset(ACTIVE_DATASET)
         engines_db[eid] = EngineTwinState(eid, test_df)
         
     eng = engines_db[eid]
@@ -620,6 +803,9 @@ async def post_iot_telemetry(data: IoTTelemetryInput):
         "predictions": data.predictions
     }
     
+    # Invalidate cache
+    FLEET_SUMMARY_CACHE_SIGNATURE = ""
+    
     status = get_engine_metrics_and_explanations(eid, data.cycle)
     await sim_manager.broadcast({
         "type": "telemetry_update",
@@ -629,8 +815,9 @@ async def post_iot_telemetry(data: IoTTelemetryInput):
     
     return {"status": "success", "engine_id": eid, "mode": "IoT Live Stream Ingestion"}
 
-@app.post("/api/simulation/control")
-def post_sim_control(control: dict):
+@app.post("/api/v1/simulation/control")
+def post_sim_control_v1(control: dict):
+    global FLEET_SUMMARY_CACHE_SIGNATURE
     if "is_running" in control:
         sim_manager.is_running = bool(control["is_running"])
     if "speed" in control:
@@ -644,19 +831,18 @@ def post_sim_control(control: dict):
             eid.is_iot_mode = False
             eid.iot_data = {}
             
+    # Invalidate cache
+    FLEET_SUMMARY_CACHE_SIGNATURE = ""
+            
     return {
         "is_running": sim_manager.is_running,
         "speed": sim_manager.speed,
         "engines_active": len(engines_db)
     }
 
-# Benchmark execution API
-@app.get("/api/research/benchmark")
-async def get_benchmark_results():
-    """Triggers the cross-dataset transfer generalization benchmark suite off the event loop.
-    Returns all research metrics: RMSE, NASA Score, PICP, Sharpness, PMA AUDC,
-    baseline comparisons, ablation results, and calibration reliability data.
-    """
+@app.get("/api/v1/research/benchmark")
+async def get_benchmark_results_v1():
+    """Triggers the cross-dataset transfer generalization benchmark suite off the event loop."""
     loop = asyncio.get_event_loop()
     def _run():
         return generate_benchmark_tables()
@@ -684,7 +870,6 @@ async def get_benchmark_results():
 async def websocket_endpoint(websocket: WebSocket):
     await sim_manager.connect(websocket)
     try:
-        # Initial status broadcast
         initial_states = {}
         for eid, eng in engines_db.items():
             try:
@@ -699,22 +884,19 @@ async def websocket_endpoint(websocket: WebSocket):
         }))
         
         while True:
-            # Maintain connection
             await websocket.receive_text()
     except WebSocketDisconnect:
         sim_manager.disconnect(websocket)
     except Exception:
         sim_manager.disconnect(websocket)
 
-# Startup tasks — use lifespan instead of the deprecated on_event
+# Lifespan context manager for startup tasks
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app_instance):
-    # Start the simulation broadcast loop on startup
     asyncio.create_task(sim_manager.run_loop())
     yield
-    # Cleanup on shutdown (nothing to do currently)
 
 app.router.lifespan_context = lifespan
 
