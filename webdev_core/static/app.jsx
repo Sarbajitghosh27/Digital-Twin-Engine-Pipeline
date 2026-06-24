@@ -166,6 +166,78 @@ function RulTrendRibbonChart({ history }) {
   );
 }
 
+function FaultModeDiagnosticCard({ status, narrative }) {
+  if (!status || !status.predictions || !status.predictions.fault_diagnosis) {
+    return (
+      <div className="panel diagnostic-card" style={{ padding: '14px', marginBottom: '10px', background: 'rgba(77, 96, 124, 0.05)', border: '1px solid rgba(77, 96, 124, 0.15)' }}>
+        <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+          <Icon name="shield-alert" /> Diagnostic Reasoning Agent
+        </h4>
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', margin: '8px 0 0 0' }}>
+          No diagnostic telemetry active.
+        </p>
+      </div>
+    );
+  }
+  
+  const fd = status.predictions.fault_diagnosis;
+  const isHealthy = status.predictions.HealthIndex >= 70 && !status.predictions.is_anomalous;
+  
+  let cardBorder = '1px solid rgba(77, 96, 124, 0.15)';
+  let badgeColor = 'var(--text-dim)';
+  let badgeBg = 'rgba(77, 96, 124, 0.1)';
+  
+  if (status.predictions.HealthIndex < 40) {
+    cardBorder = '1px solid var(--accent-red)';
+    badgeColor = 'var(--accent-red)';
+    badgeBg = 'rgba(255, 51, 85, 0.1)';
+  } else if (status.predictions.HealthIndex < 70) {
+    cardBorder = '1px solid var(--accent-orange)';
+    badgeColor = 'var(--accent-orange)';
+    badgeBg = 'rgba(255, 140, 0, 0.1)';
+  } else if (!isHealthy) {
+    cardBorder = '1px solid var(--accent-cyan)';
+    badgeColor = 'var(--accent-cyan)';
+    badgeBg = 'rgba(0, 240, 255, 0.1)';
+  }
+  
+  return (
+    <div className="panel diagnostic-card" style={{ padding: '14px', marginBottom: '12px', background: 'rgba(6, 10, 19, 0.4)', border: cardBorder, borderRadius: '6px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+          <Icon name="shield-alert" style={{ width: '12px', height: '12px' }} /> Diagnostic Reasoning Agent
+        </h4>
+        <span style={{
+          fontSize: '9px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '3px',
+          color: badgeColor, background: badgeBg, border: `1px solid ${badgeColor}`,
+          fontFamily: 'var(--font-mono)', letterSpacing: '0.3px'
+        }}>
+          {fd.fault_mode.toUpperCase()} ({Math.round(fd.confidence * 100)}%)
+        </span>
+      </div>
+      
+      <div style={{ fontSize: '11px', lineHeight: '1.4', color: 'var(--text-main)', marginBottom: '10px', fontFamily: 'var(--font-mono)' }}>
+        {narrative || "Generating failure narrative..."}
+      </div>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', borderTop: '1px solid rgba(77, 96, 124, 0.15)', paddingTop: '8px' }}>
+        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', fontSize: '8px' }}>Primary Driver</span>
+          <span style={{ color: 'var(--accent-cyan)' }}>{fd.primary_sensor}</span>
+        </div>
+        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', fontSize: '8px' }}>Secondary Driver</span>
+          <span style={{ color: 'var(--accent-cyan)' }}>{fd.secondary_sensor}</span>
+        </div>
+        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', gridColumn: 'span 2' }}>
+          <span style={{ color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', fontSize: '8px' }}>Recommended Action</span>
+          <span style={{ color: 'var(--accent-green)', fontWeight: '500' }}>{fd.recommended_action}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Health Index Decay Chart Component with alert line
 function HiDecayChart({ history, currentHi }) {
   const canvasRef = useRef(null);
@@ -306,6 +378,7 @@ function App() {
   const [futurePredictions, setFuturePredictions] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [selectedChartSensor, setSelectedChartSensor] = useState("T30");
+  const [explanationText, setExplanationText] = useState("");
   
   // Research Benchmark states
   const [isBenchmarking, setIsBenchmarking] = useState(false);
@@ -405,6 +478,11 @@ function App() {
       const predRes = await fetch(`http://localhost:8000/api/v1/engines/${id}/prediction`);
       const predData = await predRes.json();
       setFuturePredictions(predData);
+
+      // Fetch the explanation narrative
+      const expRes = await fetch(`http://localhost:8000/api/v1/engines/${id}/explain`);
+      const expData = await expRes.json();
+      setExplanationText(expData.explanation || expData.reasoning || "");
     } catch (err) {
       console.error(`Error loading details for Engine #${id}: `, err);
     }
@@ -471,6 +549,11 @@ function App() {
       setHistory(await histRes.json());
       const predRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/prediction`);
       setFuturePredictions(await predRes.json());
+
+      // Fetch explanation narrative for the specific cycle
+      const expRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${nextCycle}`);
+      const expData = await expRes.json();
+      setExplanationText(expData.explanation || expData.reasoning || "");
     } catch (err) {
       console.error("Error stepping cycle:", err);
     }
@@ -523,6 +606,12 @@ function App() {
               if (alreadyExists) return prev;
               return [...prev, activeUpdate];
             });
+
+            // Fetch explanation narrative for the updated cycle
+            fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${activeUpdate.current_cycle}`)
+              .then(res => res.json())
+              .then(data => setExplanationText(data.explanation || data.reasoning || ""))
+              .catch(err => console.error("Error fetching websocket cycle explain:", err));
           }
           fetchData();
         } else if (message.type === "initial_state") {
@@ -530,6 +619,12 @@ function App() {
           if (activeUpdate) {
             setEngineStatus(activeUpdate);
             setIsIotActive(activeUpdate.is_iot_mode);
+
+            // Fetch explanation narrative for the initial cycle
+            fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${activeUpdate.current_cycle}`)
+              .then(res => res.json())
+              .then(data => setExplanationText(data.explanation || data.reasoning || ""))
+              .catch(err => console.error("Error fetching websocket initial explain:", err));
           }
         }
       };
@@ -797,6 +892,11 @@ function App() {
                   const predRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/prediction`);
                   const predData = await predRes.json();
                   setFuturePredictions(predData);
+
+                  // Fetch explanation narrative for the specific cycle
+                  const expRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${cycle}`);
+                  const expData = await expRes.json();
+                  setExplanationText(expData.explanation || expData.reasoning || "");
                 } catch (err) {
                   console.error("Error scrubbing cycle:", err);
                 }
@@ -1044,6 +1144,9 @@ function App() {
 
                 {/* RUL Trend Ribbon Chart */}
                 <RulTrendRibbonChart history={history} />
+
+                {/* Fault Mode Diagnostic Card (Reasoning Engine) */}
+                <FaultModeDiagnosticCard status={engineStatus} narrative={explanationText} />
 
                 {/* Progress Indicators */}
                 <div className="progress-widget">

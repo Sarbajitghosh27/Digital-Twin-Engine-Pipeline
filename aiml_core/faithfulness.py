@@ -24,6 +24,7 @@ import torch
 import torch.nn as nn
 from typing import Callable, List, Tuple, Dict, Any
 from aiml_core.explainers import PMAExplainer
+from aiml_core.hi_normalizer import compute_hi, compute_hi_torch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -50,10 +51,9 @@ def _sensor_to_rul(
         # Per-timestep reconstruction error (mean over sensor dim)
         errs = torch.mean((recon - x_t) ** 2, dim=2).squeeze(0).cpu().numpy()
 
-    err_offset = mean_recon_err * 0.95
     hi_list = []
     for e in errs:
-        hi_list.append(float(100.0 * np.exp(-max(0.0, e - err_offset) / ae_threshold)))
+        hi_list.append(compute_hi(e, ae_threshold))
 
     hi_t = torch.FloatTensor(hi_list).unsqueeze(0).unsqueeze(2).to(device)
     with torch.no_grad():
@@ -74,8 +74,6 @@ def compute_gradient_x_input_attributions(
     averages over the time axis to get a (n_sensors,) attribution vector.
     """
     ae_criterion = nn.MSELoss()
-    err_offset = mean_recon_err * 0.95
-
     x_t = torch.FloatTensor(x_norm_3d).to(device).requires_grad_(True)
 
     ae_model.eval()
@@ -87,7 +85,7 @@ def compute_gradient_x_input_attributions(
     hi_vals = []
     for i in range(errs.shape[0]):
         e = errs[i]
-        hi_vals.append(100.0 * torch.exp(-torch.clamp(e - err_offset, min=0.0) / ae_threshold))
+        hi_vals.append(compute_hi_torch(e, ae_threshold))
     hi_t = torch.stack(hi_vals).unsqueeze(0).unsqueeze(2)  # (1, 30, 1)
 
     rul_pred = lstm_model(hi_t, mc_dropout=False)
@@ -117,7 +115,6 @@ def compute_integrated_gradients_attributions(
     Interpolates linearly from a zero baseline to x_norm_3d and integrates path gradients.
     """
     ae_criterion = nn.MSELoss()
-    err_offset = mean_recon_err * 0.95
     n_sensors = x_norm_3d.shape[-1]
 
     baseline = np.zeros_like(x_norm_3d)
@@ -137,7 +134,7 @@ def compute_integrated_gradients_attributions(
         hi_vals = []
         for i in range(errs.shape[0]):
             e = errs[i]
-            hi_vals.append(100.0 * torch.exp(-torch.clamp(e - err_offset, min=0.0) / ae_threshold))
+            hi_vals.append(compute_hi_torch(e, ae_threshold))
         hi_t = torch.stack(hi_vals).unsqueeze(0).unsqueeze(2)  # (1, 30, 1)
 
         rul_pred = lstm_model(hi_t, mc_dropout=False)
@@ -191,7 +188,11 @@ def compute_audc(curve: np.ndarray) -> float:
     if abs(curve[0]) < 1e-6:
         return 0.0
     norm_curve = curve / (abs(curve[0]) + 1e-9)
-    return float(np.trapz(norm_curve, dx=1.0 / (n - 1)))
+    trapz_fn = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    if trapz_fn is None:
+        # manual trapezoidal rule fallback
+        return float(np.sum(norm_curve[1:] + norm_curve[:-1]) * 0.5 * (1.0 / (n - 1)))
+    return float(trapz_fn(norm_curve, dx=1.0 / (n - 1)))
 
 
 def generate_faithfulness_plot(

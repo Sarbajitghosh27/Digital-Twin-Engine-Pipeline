@@ -8,6 +8,7 @@ from typing import Dict, Tuple, Any, List
 from aiml_core.config import CONFIG
 from aiml_core.models import LSTMAutoencoder, BayesianLSTM
 from aiml_core.data_loader import normalize_regimes, prepare_sliding_windows, CMAPSS_SENSORS
+from aiml_core.hi_normalizer import compute_hi
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -50,7 +51,12 @@ def train_pipeline(
     random_state = np.random.default_rng(seed)
     
     # Split engines
-    train_df, val_df = split_train_val_engines(train_df_full, CONFIG["validation_split"], seed)
+    # Run operating condition normalization first to ensure we align normalization scales
+    norm_train_df_full = normalize_regimes(
+        train_df_full, CMAPSS_SENSORS,
+        regime_col="regime" if "regime" in train_df_full.columns else "Setting1"
+    )
+    train_df, val_df = split_train_val_engines(norm_train_df_full, CONFIG["validation_split"], seed)
     
     # 1. Fit normalizer on healthy cycles (cycle <= 50) of training set
     early_train = train_df[train_df["cycle"] <= 50].copy()
@@ -93,19 +99,30 @@ def train_pipeline(
     patience_counter = 0
     best_ae_state = None
     
-    ae_model.train()
+    batch_size = CONFIG["batch_size"]
     for epoch in range(CONFIG["epochs"]):
-        ae_opt.zero_grad()
-        recon = ae_model(X_train_ae)
-        loss = ae_criterion(recon, X_train_ae)
-        loss.backward()
-        ae_opt.step()
-        
-        # Eval val loss
+        ae_model.train()
+        perm = torch.randperm(X_train_ae.size(0))
+        for i in range(0, X_train_ae.size(0), batch_size):
+            idx = perm[i : i + batch_size]
+            xb = X_train_ae[idx]
+            ae_opt.zero_grad()
+            recon = ae_model(xb)
+            loss = ae_criterion(recon, xb)
+            loss.backward()
+            ae_opt.step()
+            
+        # Eval val loss (batched to prevent CUDA OOM)
         ae_model.eval()
         with torch.no_grad():
-            val_recon = ae_model(X_val_ae)
-            val_loss = float(ae_criterion(val_recon, X_val_ae).item())
+            val_loss_sum = 0.0
+            val_count = 0
+            for i in range(0, X_val_ae.size(0), batch_size):
+                xb_val = X_val_ae[i : i + batch_size]
+                val_recon = ae_model(xb_val)
+                val_loss_sum += float(ae_criterion(val_recon, xb_val).item()) * len(xb_val)
+                val_count += len(xb_val)
+            val_loss = val_loss_sum / (val_count + 1e-9)
         ae_model.train()
         
         if val_loss < best_ae_loss:
@@ -121,20 +138,23 @@ def train_pipeline(
     if best_ae_state is not None:
         ae_model.load_state_dict({k: v.to(device) for k, v in best_ae_state.items()})
         
-    # Calculate baseline mean reconstruction error on validation sequences
+    # Collect errors batch by batch to prevent CUDA OOM
     ae_model.eval()
+    all_errs_list = []
     with torch.no_grad():
-        recon_base = ae_model(X_val_ae)
-        mean_recon_err = float(ae_criterion(recon_base, X_val_ae).item())
-    ae_threshold = max(0.01, mean_recon_err * 2.0)
-    err_offset = mean_recon_err * 0.95
+        for i in range(0, X_train_ae.size(0), batch_size):
+            xb = X_train_ae[i : i + batch_size]
+            recon = ae_model(xb)
+            errs_batch = torch.mean((recon - xb) ** 2, dim=(1, 2)).cpu().numpy()
+            all_errs_list.append(errs_batch)
+    all_errs_np = np.concatenate(all_errs_list)
+    p95_err = float(np.percentile(all_errs_np, 95))
+    mean_recon_err = float(all_errs_np.mean())
     
     # 2. Train Bayesian LSTM on RUL prediction
-    # Prepare global test scaling (using training data mean/std)
-    raw_train_vals = train_df_full[CMAPSS_SENSORS].values
-    t_mean = raw_train_vals.mean(axis=0)
-    t_std = raw_train_vals.std(axis=0)
-    t_std[t_std == 0] = 1.0
+    # Prepare global test scaling (align with Autoencoder healthy scaling)
+    t_mean = ae_mean
+    t_std = ae_std
     
     # Helper to compute HI sequences for a dataframe
     def add_hi_column(df_sub):
@@ -158,7 +178,7 @@ def train_pipeline(
                     with torch.no_grad():
                         recon_w = ae_model(w_t)
                         err = float(ae_criterion(recon_w, w_t).item())
-                    hi = 100.0 * np.exp(-max(0.0, err - err_offset) / ae_threshold)
+                    hi = compute_hi(err, p95_err)
                     hi_list.append(hi)
             norm_sub.loc[norm_sub["engine_id"] == eid, "HI"] = hi_list
         return norm_sub
@@ -225,7 +245,7 @@ def train_pipeline(
     if best_lstm_state is not None:
         lstm_model.load_state_dict({k: v.to(device) for k, v in best_lstm_state.items()})
         
-    return ae_model, lstm_model, ae_threshold, mean_recon_err, t_mean, t_std
+    return ae_model, lstm_model, p95_err, mean_recon_err, t_mean, t_std
 
 def get_or_train_models(
     dataset_name: str,
@@ -246,7 +266,7 @@ def get_or_train_models(
             with open(meta_path, "r") as f:
                 meta = json.load(f)
                 
-            ae_threshold = meta["ae_threshold"]
+            p95_err = meta.get("p95_err", meta.get("ae_threshold", 0.1))
             mean_recon_err = meta["mean_recon_err"]
             t_mean = np.array(meta["sensor_mean"])
             t_std = np.array(meta["sensor_std"])
@@ -260,7 +280,7 @@ def get_or_train_models(
             
             ae_model.eval()
             lstm_model.eval()
-            return ae_model, lstm_model, ae_threshold, mean_recon_err, t_mean, t_std
+            return ae_model, lstm_model, p95_err, mean_recon_err, t_mean, t_std
         except Exception as e:
             print(f"[checkpoints] Load failed, falling back to training: {e}")
             
@@ -268,7 +288,7 @@ def get_or_train_models(
     train_df, _ = dm.get_dataset(dataset_name)
     train_df = train_df.ffill().bfill()
     
-    ae_model, lstm_model, ae_threshold, mean_recon_err, t_mean, t_std = train_pipeline(
+    ae_model, lstm_model, p95_err, mean_recon_err, t_mean, t_std = train_pipeline(
         dataset_name, train_df, seed, window_size=window_size
     )
     
@@ -279,7 +299,7 @@ def get_or_train_models(
             torch.save(lstm_model.state_dict(), lstm_path)
             with open(meta_path, "w") as f:
                 json.dump({
-                    "ae_threshold": ae_threshold,
+                    "p95_err": p95_err,
                     "mean_recon_err": mean_recon_err,
                     "sensor_mean": t_mean.tolist(),
                     "sensor_std": t_std.tolist()
@@ -288,7 +308,7 @@ def get_or_train_models(
         except Exception as e:
             print(f"[checkpoints] Failed to save checkpoints: {e}")
             
-    return ae_model, lstm_model, ae_threshold, mean_recon_err, t_mean, t_std
+    return ae_model, lstm_model, p95_err, mean_recon_err, t_mean, t_std
 
 
 def get_calibration_metrics(dataset_name: str, seed: int, dm: Any) -> Dict[str, Any]:
@@ -313,7 +333,7 @@ def get_calibration_metrics(dataset_name: str, seed: int, dm: Any) -> Dict[str, 
     train_df_full = train_df_full.ffill().bfill()
     train_df, val_df = split_train_val_engines(train_df_full, CONFIG["validation_split"], seed)
     
-    ae_threshold = meta.get("ae_threshold", 0.1)
+    p95_err = meta.get("p95_err", meta.get("ae_threshold", 0.1))
     mean_recon_err = meta.get("mean_recon_err", 0.05)
     t_mean = np.array(meta.get("sensor_mean", np.zeros(len(CMAPSS_SENSORS))))
     t_std = np.array(meta.get("sensor_std", np.ones(len(CMAPSS_SENSORS))))
@@ -329,7 +349,6 @@ def get_calibration_metrics(dataset_name: str, seed: int, dm: Any) -> Dict[str, 
     lstm_model.eval()
     
     ae_criterion = nn.MSELoss()
-    err_offset = mean_recon_err * 0.95
     norm_val = normalize_regimes(val_df, CMAPSS_SENSORS, regime_col="regime" if "regime" in val_df.columns else "Setting1")
     
     window_size = CONFIG["window_size"]
@@ -348,7 +367,7 @@ def get_calibration_metrics(dataset_name: str, seed: int, dm: Any) -> Dict[str, 
                 with torch.no_grad():
                     recon_w = ae_model(w_t)
                     err = float(ae_criterion(recon_w, w_t).item())
-                hi = 100.0 * np.exp(-max(0.0, err - err_offset) / ae_threshold)
+                hi = compute_hi(err, p95_err)
                 hi_list.append(hi)
         norm_val.loc[norm_val["engine_id"] == eid, "HI"] = hi_list
         
