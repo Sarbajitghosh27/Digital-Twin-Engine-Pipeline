@@ -4,13 +4,13 @@ from typing import Callable
 class PMAExplainer:
     """
     Perturbation Marginal Attribution (PMA) Explainer.
-    An additive, SHAP-like explainer designed for sensor timeseries and tabular predictions.
-    Computes attributions by replacing each feature with its healthy baseline value and 
-    scaling the marginal changes to sum exactly to the prediction difference.
+    A perturbation-based local feature attribution method designed for sensor timeseries
+    and tabular predictions. Computes attributions by replacing each feature with its
+    healthy baseline value and scaling the marginal changes to sum exactly to the prediction
+    difference.
     
-    Note: While PMA satisfies the efficiency (additivity) axiom by construction, it is 
-    not mathematically proven to satisfy the full set of Shapley axioms (such as symmetry 
-    and dummy/null player axioms).
+    Rather than relying on exact Shapley axiom approximations, the validity of this 
+    method is verified empirically via Area Under the Deletion Curve (AUDC) comparison.
     """
     def __init__(self, model_func: Callable[[np.ndarray], float], baseline_state: np.ndarray):
         """
@@ -38,6 +38,13 @@ class PMAExplainer:
         # 1. Compute current and baseline predictions
         y_curr = self.model_func(current_state)
         y_base = self.model_func(self.baseline_state)
+        
+        # Ensure we are dealing with scalar floats
+        if hasattr(y_curr, "__len__") or isinstance(y_curr, np.ndarray):
+            y_curr = float(y_curr[0])
+        if hasattr(y_base, "__len__") or isinstance(y_base, np.ndarray):
+            y_base = float(y_base[0])
+            
         delta = y_curr - y_base
         
         if abs(delta) < 1e-6:
@@ -59,6 +66,8 @@ class PMAExplainer:
                 perturbed[0, i] = self.baseline_state[0, i]
                 
             y_perturbed = self.model_func(perturbed)
+            if hasattr(y_perturbed, "__len__") or isinstance(y_perturbed, np.ndarray):
+                y_perturbed = float(y_perturbed[0])
             
             # The marginal contribution is the change when restoring feature i to current
             # d_i = y_curr - y_perturbed

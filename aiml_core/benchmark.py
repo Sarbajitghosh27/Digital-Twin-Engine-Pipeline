@@ -31,6 +31,7 @@ from aiml_core.data_loader import (
 )
 from aiml_core.train_utils import get_or_train_models
 from aiml_core.explainers import PMAExplainer
+from aiml_core.hi_normalizer import compute_hi
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -180,7 +181,6 @@ def compute_mean_pma_attributions(
     window_size: int = 30
 ) -> np.ndarray:
     """Computes test set average attribution via PMAExplainer."""
-    err_offset = mean_recon_err * 0.95
     n_sensors = len(sensor_list)
     all_attributions = []
 
@@ -207,7 +207,7 @@ def compute_mean_pma_attributions(
                 with torch.no_grad():
                     recon = ae_model(x_t)
                     errs = torch.mean((recon - x_t) ** 2, dim=2).squeeze(0).cpu().numpy()
-                hi_list = [100.0 * np.exp(-max(0.0, e - err_offset) / ae_threshold) for e in errs]
+                hi_list = [compute_hi(e, ae_threshold) for e in errs]
                 hi_t = torch.FloatTensor(hi_list).unsqueeze(0).unsqueeze(2).to(device)
                 with torch.no_grad():
                     pred = lstm_model(hi_t, mc_dropout=False)
@@ -304,8 +304,6 @@ def run_evaluation(
 
     ae_model.eval()
     ae_criterion = nn.MSELoss()
-    baseline_mse = ae_threshold / 2.0
-    err_offset = baseline_mse * 0.95
 
     for eid in test_df["engine_id"].unique():
         eng_df = norm_test[norm_test["engine_id"] == eid].sort_values("cycle").copy()
@@ -322,7 +320,7 @@ def run_evaluation(
                 with torch.no_grad():
                     recon_w = ae_model(w_t)
                     err = float(ae_criterion(recon_w, w_t).item())
-                hi = 100.0 * np.exp(-max(0.0, err - err_offset) / ae_threshold)
+                hi = compute_hi(err, ae_threshold)
                 hi_list.append(hi)
         norm_test.loc[norm_test["engine_id"] == eid, "HI"] = hi_list
 
@@ -373,14 +371,18 @@ def run_fine_tuning_eval(
         ft_df, CMAPSS_SENSORS,
         regime_col="regime" if "regime" in ft_df.columns else "Setting1"
     )
-    raw_vals = target_train_df[CMAPSS_SENSORS].values
+    # Correct normalization by using regime-normalized values to compute scaling parameters
+    norm_target_train = normalize_regimes(
+        target_train_df, CMAPSS_SENSORS,
+        regime_col="regime" if "regime" in target_train_df.columns else "Setting1"
+    )
+    raw_vals = norm_target_train[CMAPSS_SENSORS].values
     target_mean = raw_vals.mean(axis=0)
     target_std = raw_vals.std(axis=0)
     target_std[target_std == 0] = 1.0
     
     ae_model.eval()
     ae_criterion = nn.MSELoss()
-    err_offset = mean_recon_err * 0.95
     
     for eid in ft_df["engine_id"].unique():
         eng_df = norm_ft[norm_ft["engine_id"] == eid].sort_values("cycle").copy()
@@ -397,7 +399,7 @@ def run_fine_tuning_eval(
                 with torch.no_grad():
                     recon_w = ae_model(w_t)
                     err = float(ae_criterion(recon_w, w_t).item())
-                hi = 100.0 * np.exp(-max(0.0, err - err_offset) / ae_threshold)
+                hi = compute_hi(err, ae_threshold)
                 hi_list.append(hi)
         norm_ft.loc[norm_ft["engine_id"] == eid, "HI"] = hi_list
         
@@ -567,6 +569,7 @@ def generate_benchmark_tables() -> Dict[str, Any]:
         print(f"[benchmark] Ablation failed: {e}")
 
     # Build Markdown and LaTeX outputs
+    # NOTE: Hyperparameters tuned on FD001 val split; FD001 test is in-distribution. Cross-dataset rows (FD002-FD004) are primary generalization evidence.
     md_table = "| Source | Target | Zero-Shot RMSE | Few-Shot RMSE | Zero-Shot Score | PICP (90%CI) | Data Source |\n"
     md_table += "|--------|--------|----------------|----------------|-----------------|--------------|-------------|\n"
     for t in targets:
@@ -576,6 +579,7 @@ def generate_benchmark_tables() -> Dict[str, Any]:
             f"{s['score']['mean']:.1f} ± {s['score']['std']:.1f} | "
             f"{s['picp']['mean']:.3f} | {s['data_source']} |\n"
         )
+    md_table += "\n*Footnote: Hyperparameters tuned on FD001 val split; FD001 test is in-distribution. Cross-dataset rows (FD002-FD004) are primary generalization evidence.*\n"
         
     if baseline_results:
         md_table += "\n**Baselines (FD001, 3-seed mean±std):**\n"
@@ -596,7 +600,12 @@ def generate_benchmark_tables() -> Dict[str, Any]:
             f"{t} & {s['rmse']['str']} & {s['ft_rmse']['str']} & "
             f"{s['score']['mean']:.1f} $\\pm$ {s['score']['std']:.1f} & {s['picp']['mean']:.3f} & {s['data_source']} \\\\\n"
         )
-    latex_table += "\\hline\\end{tabular}\\end{table}"
+    latex_table += (
+        "\\hline\\end{tabular}\n"
+        "\\\\\\raggedright \\textsuperscript{*}Hyperparameters tuned on FD001 val split; FD001 test is in-distribution. "
+        "Cross-dataset rows (FD002-FD004) are primary generalization evidence.\n"
+        "\\end{table}"
+    )
 
     return {
         "markdown": md_table,
@@ -614,6 +623,27 @@ def generate_benchmark_tables() -> Dict[str, Any]:
     }
 
 if __name__ == "__main__":
-    res = generate_benchmark_tables()
-    print("\n--- BENCHMARK RESULTS ---")
-    print(res["markdown"])
+    import argparse
+    parser = argparse.ArgumentParser(description="Cross-Dataset Transfer Benchmark Suite")
+    parser.add_argument('--regenerate-shap', action='store_true', help='Recompute PMA attributions and regenerate shap_summary.png')
+    args = parser.parse_args()
+    
+    if args.regenerate_shap:
+        print("[benchmark] Regenerating SHAP summary plot...")
+        dm = DatasetManager(data_root="data")
+        ae_m, lstm_m, p95_err, mrec, tm, ts = get_or_train_models('FD001', 42, dm)
+        
+        _, _, _, _, _, _, _, _, norm_test = run_evaluation(
+            'FD001', ae_m, lstm_m, p95_err, dm, tm, ts
+        )
+        
+        attrs = compute_mean_pma_attributions(
+            ae_m, lstm_m, norm_test, CMAPSS_SENSORS, p95_err, mrec
+        )
+        
+        generate_real_shap_plot(attrs, CMAPSS_SENSORS)
+        print("[benchmark] SHAP summary plot regenerated successfully!")
+    else:
+        res = generate_benchmark_tables()
+        print("\n--- BENCHMARK RESULTS ---")
+        print(res["markdown"])

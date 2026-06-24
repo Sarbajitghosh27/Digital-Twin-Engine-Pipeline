@@ -166,6 +166,10 @@ def run_baseline_suite(
     if epochs is None:
         epochs = CONFIG["epochs"]
 
+    # PARITY CONTRACT: same window_size, epochs, early_stopping, seed, train split
+    # as proposed model. PlainLSTM hidden_dim=16 (identical to BayesianLSTM).
+    # LinearRegression and RandomForest receive flattened windows (30*n_features inputs) vs sequential inputs.
+
     print("[baselines] Loading FD001 for baseline training...")
     train_df, test_df = dm.get_dataset("FD001")
     train_df = train_df.ffill().bfill()
@@ -246,7 +250,7 @@ def run_baseline_suite(
                 # PlainLSTM PyTorch baseline
                 n_features = X_train.shape[-1]
                 torch.manual_seed(seed)
-                model = PlainLSTM(input_dim=n_features, hidden_dim=32).to(device)
+                model = PlainLSTM(input_dim=n_features, hidden_dim=16).to(device)
                 rmse, mae, score, pred_test = _train_and_eval_lstm(
                     model, X_train, Y_train, X_val, Y_val, X_test, Y_test,
                     epochs=epochs, batch_size=CONFIG["batch_size"],
