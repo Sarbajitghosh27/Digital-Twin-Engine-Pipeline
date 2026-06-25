@@ -2,14 +2,14 @@
 
 /* DEFAULT LIGHT CLINICAL-ENGINEERING THEME */
 :root {
-  --bg-primary: #eef1f6;
-  --bg-secondary: #e3e8f0;
+  --bg-primary: #FAF3EB;
+  --bg-secondary: #F3EBE1;
   
-  /* White glass cards */
-  --bg-card: rgba(255, 255, 255, 0.85);
-  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  /* White premium cards */
+  --bg-card: #ffffff;
+  --bg-card-hover: #ffffff;
   
-  /* Brand indigo accent & semantic states */
+  /* Warm orange/pink gradients and semantic states */
   --accent-blue: #2563eb;
   --accent-cyan: #1d4ed8;
   --accent-orange: #d97706;
@@ -17,9 +17,9 @@
   --accent-green: #16a34a;
   --accent-gray: #64748b;
   
-  /* Text colors on light canvas */
-  --text-main: #0f172a;
-  --text-muted: #5b6b85;
+  /* Text colors on warm light canvas */
+  --text-main: #1e293b;
+  --text-muted: #64748b;
   --text-dim: #94a3b8;
   
   /* Status Colors */
@@ -35,21 +35,28 @@
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   
-  --border-glow: 1px solid rgba(100, 116, 139, 0.20);
-  --shadow-glow: 0 8px 32px 0 rgba(100, 116, 139, 0.12);
+  --border-glow: 1px solid rgba(226, 232, 240, 0.8);
+  --shadow-glow: 0 4px 20px 0 rgba(0, 0, 0, 0.04);
   
   /* Canvas Background Gradient */
-  --bg-gradient: linear-gradient(to bottom, #eef1f6 0%, #e3e8f0 100%);
+  --bg-gradient: linear-gradient(to bottom, #FAF3EB 0%, #F5eae0 100%);
+  
+  --panel-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+  --panel-shadow-hover: 0 10px 30px 0 rgba(0, 0, 0, 0.06);
+  --panel-border-hover: rgba(99, 102, 241, 0.2);
+  --panel-top-line: transparent;
+  
+  --timeline-track: linear-gradient(90deg, #ff8c00, #9333ea);
+  --timeline-thumb: #7c3aed;
 }
 
-/* keep [data-theme=dark] block in sync with :root — see implementation plan */
 [data-theme="dark"] {
   --bg-primary: #060a13;
-  --bg-secondary: #0d1322;
+  --bg-secondary: #0a0f1d;
   
   /* Cyber glass cards */
-  --bg-card: rgba(16, 24, 48, 0.65);
-  --bg-card-hover: rgba(22, 35, 69, 0.8);
+  --bg-card: rgba(13, 19, 33, 0.75);
+  --bg-card-hover: rgba(22, 35, 69, 0.85);
   
   /* Cyber Aerospace Accent System */
   --accent-blue: #0088ff;
@@ -69,12 +76,20 @@
   --color-warning: var(--accent-orange);
   --color-critical: var(--accent-red);
   
-  --border-glow: 1px solid rgba(0, 240, 255, 0.15);
-  --shadow-glow: 0 0 15px rgba(0, 240, 255, 0.1);
+  --border-glow: 1px solid rgba(77, 96, 124, 0.25);
+  --shadow-glow: 0 0 15px rgba(0, 240, 255, 0.05);
   
   --bg-gradient: radial-gradient(at 10% 20%, rgba(0, 136, 255, 0.08) 0px, transparent 50%),
                  radial-gradient(at 90% 80%, rgba(255, 140, 0, 0.05) 0px, transparent 50%),
                  linear-gradient(to bottom, #060a13 0%, #03050a 100%);
+                 
+  --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  --panel-shadow-hover: var(--shadow-glow), 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  --panel-border-hover: rgba(77, 96, 124, 0.35);
+  --panel-top-line: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.2), transparent);
+  
+  --timeline-track: linear-gradient(90deg, #0088ff, #ff3355, #ff8c00);
+  --timeline-thumb: #ff3355;
 }
 
 * {
@@ -91,6 +106,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   padding: 16px;
+  transition: background-color var(--transition-normal), color var(--transition-normal), background-image var(--transition-normal);
 }
 
 /* Custom scrollbars */
@@ -126,7 +142,7 @@ body {
   border: var(--border-glow);
   border-radius: 8px;
   padding: 16px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  box-shadow: var(--panel-shadow);
   transition: all var(--transition-normal);
   position: relative;
   overflow: hidden;
@@ -139,12 +155,12 @@ body {
   left: 0;
   width: 100%;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.3), transparent);
+  background: var(--panel-top-line);
 }
 
 .panel:hover {
-  border-color: rgba(0, 240, 255, 0.3);
-  box-shadow: var(--shadow-glow), 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+  border-color: var(--panel-border-hover);
+  box-shadow: var(--panel-shadow-hover);
 }
 
 /* Header Area styling */
@@ -155,6 +171,34 @@ header {
   flex-wrap: wrap;
   gap: 16px;
   padding: 12px 24px;
+  position: relative;
+  padding-right: 64px; /* Space for absolute theme toggle */
+}
+
+.theme-toggle-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: rgba(0, 136, 255, 0.08);
+  border: 1px solid var(--accent-blue);
+  color: var(--text-main);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 100;
+  transition: all var(--transition-normal);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(0, 240, 255, 0.18);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.35);
+  transform: scale(1.08);
 }
 
 header .branding {
@@ -271,9 +315,9 @@ header .branding span.subtitle {
 }
 
 .tab-btn.active {
-  background: var(--accent-blue);
+  background: linear-gradient(135deg, #ff8c00 0%, #ff3355 100%);
   color: #fff;
-  box-shadow: 0 0 10px rgba(0, 136, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(255, 51, 85, 0.25);
 }
 
 /* Status Indicators */
@@ -369,12 +413,11 @@ header .branding span.subtitle {
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
-/* Dashboard Grid */
+/* Dashboard Grid - Vertical Flex for stack view */
 .dashboard-grid {
-  display: grid;
-  grid-template-columns: 360px 1fr 380px;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  min-height: 520px;
 }
 
 @media (max-width: 1400px) {
@@ -415,11 +458,13 @@ header .branding span.subtitle {
   background: rgba(25, 36, 64, 0.4);
   border: 1px solid rgba(77, 96, 124, 0.25);
   border-radius: 6px;
-  padding: 10px;
+  padding: 12px;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 8px;
   transition: all var(--transition-fast);
+  min-height: 95px;
 }
 
 .sensor-card:hover {
@@ -839,8 +884,8 @@ header .branding span.subtitle {
 /* Control Ingestion Deck */
 .control-deck-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
   margin-top: 8px;
 }
 
@@ -1250,5 +1295,489 @@ header .branding span.subtitle {
   background: rgba(255, 140, 0, 0.15);
   color: var(--accent-orange);
   border: 1px solid rgba(255, 140, 0, 0.3);
+}
+
+/* Custom range timeline slider */
+.timeline-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--timeline-track) !important;
+  outline: none;
+  cursor: pointer;
+}
+
+.timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--timeline-thumb) !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: transform var(--transition-fast);
+}
+
+.timeline-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* Custom active state button overrides for Pause */
+.btn-active {
+  background: linear-gradient(135deg, #ff8c00 0%, #ff3355 100%) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 12px rgba(255, 51, 85, 0.25);
+}
+
+/* Custom KPI Cards */
+[data-theme="light"] .kpi-card.kpi-fleet,
+:root:not([data-theme="dark"]) .kpi-card.kpi-fleet {
+  background: #ffffff;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+[data-theme="light"] .kpi-card.kpi-fleet .kpi-icon,
+:root:not([data-theme="dark"]) .kpi-card.kpi-fleet .kpi-icon {
+  background: rgba(99, 102, 241, 0.08);
+  color: #6366f1;
+}
+
+[data-theme="light"] .kpi-card.kpi-health,
+:root:not([data-theme="dark"]) .kpi-card.kpi-health {
+  background: #f0fdf4;
+  border: 1px solid rgba(22, 163, 74, 0.2);
+}
+[data-theme="light"] .kpi-card.kpi-health .kpi-icon,
+:root:not([data-theme="dark"]) .kpi-card.kpi-health .kpi-icon {
+  background: rgba(22, 163, 74, 0.1);
+  color: #16a34a;
+}
+[data-theme="light"] .kpi-card.kpi-health .kpi-value,
+:root:not([data-theme="dark"]) .kpi-card.kpi-health .kpi-value {
+  color: #15803d;
+}
+
+[data-theme="light"] .kpi-card.kpi-rul,
+:root:not([data-theme="dark"]) .kpi-card.kpi-rul {
+  background: #eff6ff;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+[data-theme="light"] .kpi-card.kpi-rul .kpi-icon,
+:root:not([data-theme="dark"]) .kpi-card.kpi-rul .kpi-icon {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+[data-theme="light"] .kpi-card.kpi-rul .kpi-value,
+:root:not([data-theme="dark"]) .kpi-card.kpi-rul .kpi-value {
+  color: #1d4ed8;
+}
+
+[data-theme="light"] .kpi-card.kpi-alerts,
+:root:not([data-theme="dark"]) .kpi-card.kpi-alerts {
+  background: #fffaf5;
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+[data-theme="light"] .kpi-card.kpi-alerts .kpi-icon,
+:root:not([data-theme="dark"]) .kpi-card.kpi-alerts .kpi-icon {
+  background: rgba(249, 115, 22, 0.1);
+  color: #f97316;
+}
+[data-theme="light"] .kpi-card.kpi-alerts .kpi-value,
+:root:not([data-theme="dark"]) .kpi-card.kpi-alerts .kpi-value {
+  color: #c2410c;
+}
+
+/* Light Theme Sensor Card Colors */
+[data-theme="light"] .sensor-card.sensor-t50-total,
+:root:not([data-theme="dark"]) .sensor-card.sensor-t50-total {
+  background: #faf0f6;
+  border: 1px solid rgba(192, 38, 211, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-t50-total .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-t50-total .sensor-name {
+  color: #a21caf;
+}
+[data-theme="light"] .sensor-card.sensor-t50-total .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-t50-total .sensor-value {
+  color: #701a75;
+}
+
+[data-theme="light"] .sensor-card.sensor-p30,
+:root:not([data-theme="dark"]) .sensor-card.sensor-p30 {
+  background: #fef2f2;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-p30 .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-p30 .sensor-name {
+  color: #b91c1c;
+}
+[data-theme="light"] .sensor-card.sensor-p30 .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-p30 .sensor-value {
+  color: #991b1b;
+}
+
+[data-theme="light"] .sensor-card.sensor-t50-lpt,
+:root:not([data-theme="dark"]) .sensor-card.sensor-t50-lpt {
+  background: #fffbeb;
+  border: 1px solid rgba(217, 119, 6, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-t50-lpt .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-t50-lpt .sensor-name {
+  color: #b45309;
+}
+[data-theme="light"] .sensor-card.sensor-t50-lpt .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-t50-lpt .sensor-value {
+  color: #78350f;
+}
+
+[data-theme="light"] .sensor-card.sensor-p50,
+:root:not([data-theme="dark"]) .sensor-card.sensor-p50 {
+  background: #fff7ed;
+  border: 1px solid rgba(249, 115, 22, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-p50 .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-p50 .sensor-name {
+  color: #c2410c;
+}
+[data-theme="light"] .sensor-card.sensor-p50 .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-p50 .sensor-value {
+  color: #7c2d12;
+}
+
+[data-theme="light"] .sensor-card.sensor-nf,
+:root:not([data-theme="dark"]) .sensor-card.sensor-nf {
+  background: #f0fdfa;
+  border: 1px solid rgba(13, 148, 136, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-nf .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-nf .sensor-name {
+  color: #0f766e;
+}
+[data-theme="light"] .sensor-card.sensor-nf .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-nf .sensor-value {
+  color: #115e59;
+}
+
+[data-theme="light"] .sensor-card.sensor-nc,
+:root:not([data-theme="dark"]) .sensor-card.sensor-nc {
+  background: #f0fdf4;
+  border: 1px solid rgba(22, 163, 74, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-nc .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-nc .sensor-name {
+  color: #166534;
+}
+[data-theme="light"] .sensor-card.sensor-nc .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-nc .sensor-value {
+  color: #14532d;
+}
+
+[data-theme="light"] .sensor-card.sensor-ps30,
+:root:not([data-theme="dark"]) .sensor-card.sensor-ps30 {
+  background: #f5f3ff;
+  border: 1px solid rgba(124, 58, 237, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-ps30 .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-ps30 .sensor-name {
+  color: #6d28d9;
+}
+[data-theme="light"] .sensor-card.sensor-ps30 .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-ps30 .sensor-value {
+  color: #5b21b6;
+}
+
+[data-theme="light"] .sensor-card.sensor-phi,
+:root:not([data-theme="dark"]) .sensor-card.sensor-phi {
+  background: #eff6ff;
+  border: 1px solid rgba(37, 99, 235, 0.15);
+}
+[data-theme="light"] .sensor-card.sensor-phi .sensor-name,
+:root:not([data-theme="dark"]) .sensor-card.sensor-phi .sensor-name {
+  color: #1d4ed8;
+}
+[data-theme="light"] .sensor-card.sensor-phi .sensor-value,
+:root:not([data-theme="dark"]) .sensor-card.sensor-phi .sensor-value {
+  color: #1e40af;
+}
+
+/* Status Labels for Light Theme */
+[data-theme="light"] .status-label.normal,
+:root:not([data-theme="dark"]) .status-label.normal {
+  background: rgba(37, 99, 235, 0.1) !important;
+  color: #2563eb !important;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+[data-theme="light"] .status-label.warning,
+:root:not([data-theme="dark"]) .status-label.warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #d97706 !important;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+[data-theme="light"] .status-label.critical,
+:root:not([data-theme="dark"]) .status-label.critical {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+
+/* --- AERO-TWIN PREMIUM DARK MODE STYLING OVERRIDES --- */
+
+/* Dark Theme KPI Cards overrides */
+[data-theme="dark"] .kpi-card.kpi-fleet {
+  background: rgba(13, 19, 33, 0.75);
+  border: 1px solid rgba(0, 136, 255, 0.25);
+}
+[data-theme="dark"] .kpi-card.kpi-fleet .kpi-icon {
+  background: rgba(0, 136, 255, 0.1);
+  border: 1px solid rgba(0, 136, 255, 0.35);
+  color: var(--accent-blue);
+}
+
+[data-theme="dark"] .kpi-card.kpi-health {
+  background: rgba(13, 19, 33, 0.75);
+  border: 1px solid rgba(0, 230, 118, 0.25);
+}
+[data-theme="dark"] .kpi-card.kpi-health .kpi-icon {
+  background: rgba(0, 230, 118, 0.1);
+  border: 1px solid rgba(0, 230, 118, 0.35);
+  color: var(--accent-green);
+}
+
+[data-theme="dark"] .kpi-card.kpi-rul {
+  background: rgba(13, 19, 33, 0.75);
+  border: 1px solid rgba(147, 51, 234, 0.25);
+}
+[data-theme="dark"] .kpi-card.kpi-rul .kpi-icon {
+  background: rgba(147, 51, 234, 0.1);
+  border: 1px solid rgba(147, 51, 234, 0.35);
+  color: #db2777; /* Premium pink/magenta to match thumb */
+}
+
+[data-theme="dark"] .kpi-card.kpi-alerts {
+  background: rgba(13, 19, 33, 0.75);
+  border: 1px solid rgba(255, 51, 85, 0.25);
+}
+[data-theme="dark"] .kpi-card.kpi-alerts .kpi-icon {
+  background: rgba(255, 51, 85, 0.1);
+  border: 1px solid rgba(255, 51, 85, 0.35);
+  color: var(--accent-red);
+}
+
+/* Scoped active tab styling for dark mode */
+[data-theme="dark"] .tab-btn.active {
+  background: rgba(255, 51, 85, 0.25) !important;
+  border: 1px solid var(--accent-red) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(255, 51, 85, 0.45);
+}
+
+[data-theme="dark"] .btn-active {
+  background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4);
+}
+
+/* Circular KPI icon */
+.kpi-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* KPI Sub-labels styles */
+.kpi-sublabel {
+  font-size: 11px;
+  margin-top: 4px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.kpi-sublabel.text-muted {
+  color: var(--text-muted);
+}
+.kpi-sublabel.text-healthy {
+  color: var(--accent-green) !important;
+}
+.kpi-sublabel.text-moderate {
+  color: #c026d3 !important; /* purple-pink */
+}
+.kpi-sublabel.text-critical {
+  color: var(--accent-red) !important;
+}
+
+/* Dark Theme Telemetry Sensor Card Colors */
+[data-theme="dark"] .sensor-card.sensor-t50-total {
+  background: rgba(192, 38, 211, 0.04) !important;
+  border: 1px solid rgba(192, 38, 211, 0.25) !important;
+  box-shadow: 0 0 10px rgba(192, 38, 211, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-t50-total .sensor-name {
+  color: #c026d3 !important;
+}
+[data-theme="dark"] .sensor-card.sensor-t50-total .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-t50-total:hover {
+  border-color: rgba(192, 38, 211, 0.6) !important;
+  box-shadow: 0 0 15px rgba(192, 38, 211, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-p30 {
+  background: rgba(239, 68, 68, 0.04) !important;
+  border: 1px solid rgba(239, 68, 68, 0.25) !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-p30 .sensor-name {
+  color: #f87171 !important;
+}
+[data-theme="dark"] .sensor-card.sensor-p30 .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-p30:hover {
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-t50-lpt {
+  background: rgba(217, 119, 6, 0.04) !important;
+  border: 1px solid rgba(217, 119, 6, 0.25) !important;
+  box-shadow: 0 0 10px rgba(217, 119, 6, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-t50-lpt .sensor-name {
+  color: #fbbf24 !important;
+}
+[data-theme="dark"] .sensor-card.sensor-t50-lpt .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-t50-lpt:hover {
+  border-color: rgba(217, 119, 6, 0.6) !important;
+  box-shadow: 0 0 15px rgba(217, 119, 6, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-p50 {
+  background: rgba(249, 115, 22, 0.04) !important;
+  border: 1px solid rgba(249, 115, 22, 0.25) !important;
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-p50 .sensor-name {
+  color: #fb923c !important;
+}
+[data-theme="dark"] .sensor-card.sensor-p50 .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-p50:hover {
+  border-color: rgba(249, 115, 22, 0.6) !important;
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-nf {
+  background: rgba(13, 148, 136, 0.04) !important;
+  border: 1px solid rgba(13, 148, 136, 0.25) !important;
+  box-shadow: 0 0 10px rgba(13, 148, 136, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-nf .sensor-name {
+  color: #2dd4bf !important;
+}
+[data-theme="dark"] .sensor-card.sensor-nf .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-nf:hover {
+  border-color: rgba(13, 148, 136, 0.6) !important;
+  box-shadow: 0 0 15px rgba(13, 148, 136, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-nc {
+  background: rgba(22, 163, 74, 0.04) !important;
+  border: 1px solid rgba(22, 163, 74, 0.25) !important;
+  box-shadow: 0 0 10px rgba(22, 163, 74, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-nc .sensor-name {
+  color: #4ade80 !important;
+}
+[data-theme="dark"] .sensor-card.sensor-nc .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-nc:hover {
+  border-color: rgba(22, 163, 74, 0.6) !important;
+  box-shadow: 0 0 15px rgba(22, 163, 74, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-ps30 {
+  background: rgba(124, 58, 237, 0.04) !important;
+  border: 1px solid rgba(124, 58, 237, 0.25) !important;
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-ps30 .sensor-name {
+  color: #a78bfa !important;
+}
+[data-theme="dark"] .sensor-card.sensor-ps30 .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-ps30:hover {
+  border-color: rgba(124, 58, 237, 0.6) !important;
+  box-shadow: 0 0 15px rgba(124, 58, 237, 0.15) !important;
+}
+
+[data-theme="dark"] .sensor-card.sensor-phi {
+  background: rgba(37, 99, 235, 0.04) !important;
+  border: 1px solid rgba(37, 99, 235, 0.25) !important;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.05);
+}
+[data-theme="dark"] .sensor-card.sensor-phi .sensor-name {
+  color: #60a5fa !important;
+}
+[data-theme="dark"] .sensor-card.sensor-phi .sensor-value {
+  color: #f5f3ff !important;
+}
+[data-theme="dark"] .sensor-card.sensor-phi:hover {
+  border-color: rgba(37, 99, 235, 0.6) !important;
+  box-shadow: 0 0 15px rgba(37, 99, 235, 0.15) !important;
+}
+
+/* Premium IoT Ingestion Button styling */
+.btn-iot-inject {
+  grid-column: 1 / -1;
+  background: linear-gradient(90deg, #6366f1, #ec4899, #ef4444) !important;
+  color: #ffffff !important;
+  border: none !important;
+  font-weight: 600 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3) !important;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+}
+.btn-iot-inject:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.45) !important;
+  transform: translateY(-1px);
+}
+
+/* Dark Mode Alert items styling */
+[data-theme="dark"] .alert-item.critical {
+  border: 1px solid var(--accent-red) !important;
+  background: rgba(255, 51, 85, 0.1) !important;
+  box-shadow: 0 0 10px rgba(255, 51, 85, 0.15);
+}
+[data-theme="dark"] .alert-item.warning {
+  border: 1px solid var(--accent-orange) !important;
+  background: rgba(255, 140, 0, 0.1) !important;
+  box-shadow: 0 0 10px rgba(255, 140, 0, 0.15);
+}
+
+/* Dark Mode Subtitle header text color */
+[data-theme="dark"] header .branding span.subtitle {
+  color: #ff3355 !important;
 }
 

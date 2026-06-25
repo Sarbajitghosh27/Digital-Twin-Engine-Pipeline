@@ -127,3 +127,9 @@ dmypy.json
 # Custom project paths
 data/
 checkpoints/
+
+# Temporary UI backups and downloads
+webdev_core_backup/
+app_downloaded.jsx
+index_downloaded.html
+style_downloaded.css
