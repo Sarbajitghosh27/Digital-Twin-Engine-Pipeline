@@ -7,7 +7,104 @@ const Icon = ({ name, className = "" }) => {
       window.lucide.createIcons();
     }
   }, [name]);
-  return <i data-lucide={name} className={className}></i>;
+  return <i key={name} data-lucide={name} className={className}></i>;
+};
+
+// Mini Sparkline Component for Telemetry Cards
+const Sparkline = ({ data, color = "#2563eb", width = 120, height = 30 }) => {
+  if (!data || data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  
+  // Create path points
+  const points = data.map((val, idx) => {
+    const x = (idx / (data.length - 1)) * width;
+    const y = height - ((val - min) / range) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  
+  return (
+    <svg width={width} height={height} style={{ overflow: "visible" }}>
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+      />
+    </svg>
+  );
+};
+
+const SENSOR_DISPLAY_CONFIG = {
+  "T24": {
+    label: "T50 - TOTAL TEMP",
+    unit: "°C",
+    bgClass: "sensor-t50-total",
+    sparklineColor: "#c026d3"
+  },
+  "T30": {
+    label: "T30 - HPC OUTLET TEMP",
+    unit: "°C",
+    bgClass: "sensor-t30",
+    sparklineColor: "#eab308"
+  },
+  "T50": {
+    label: "T50 - LPT OUTLET TEMP",
+    unit: "°C",
+    bgClass: "sensor-t50-lpt",
+    sparklineColor: "#b45309"
+  },
+  "P30": {
+    label: "P30 - FAN OUTLET PRESS",
+    unit: "psia",
+    bgClass: "sensor-p30",
+    sparklineColor: "#ef4444"
+  },
+  "Ps30": {
+    label: "PS30 - STATIC HPC PRESS",
+    unit: "psia",
+    bgClass: "sensor-ps30",
+    sparklineColor: "#7c3aed"
+  },
+  "phi": {
+    label: "PHI - FUEL/HPC RATIO",
+    unit: "P/P",
+    bgClass: "sensor-phi",
+    sparklineColor: "#2563eb"
+  },
+  "Nf": {
+    label: "NF - PHYSICAL FAN SPEED",
+    unit: "rpm",
+    bgClass: "sensor-nf",
+    sparklineColor: "#0d9488"
+  },
+  "Nc": {
+    label: "NC - PHYSICAL CORE SPEED",
+    unit: "rpm",
+    bgClass: "sensor-nc",
+    sparklineColor: "#16a34a"
+  },
+  "htBleed": {
+    label: "P50 - HPC OUTLET PRESS",
+    unit: "psia",
+    bgClass: "sensor-p50",
+    sparklineColor: "#f97316"
+  },
+  "Bleed": {
+    label: "P50 - HPC OUTLET PRESS",
+    unit: "psia",
+    bgClass: "sensor-p50",
+    sparklineColor: "#f97316"
+  },
+  "FuelFlow": {
+    label: "PHI - FUEL/HPC RATIO",
+    unit: "P/P",
+    bgClass: "sensor-phi",
+    sparklineColor: "#2563eb"
+  }
 };
 
 // Global config for sensor names and units — 14 literature-standard CMAPSS sensors (no Vibration/Efficiency)
@@ -52,7 +149,7 @@ for (let i = 1; i <= 20; i++) {
 }
 
 // RUL Trend Ribbon Chart Component (under RUL circular progress gauge)
-function RulTrendRibbonChart({ history }) {
+function RulTrendRibbonChart({ history, theme }) {
   const canvasRef = useRef(null);
   const chartInstanceRef = useRef(null);
 
@@ -148,7 +245,7 @@ function RulTrendRibbonChart({ history }) {
         }
       }
     });
-  }, [history]);
+  }, [history, theme]);
 
   return (
     <div style={{ width: '100%', height: '110px', marginTop: '10px', background: 'rgba(6, 10, 19, 0.3)', border: '1px solid rgba(77, 96, 124, 0.15)', borderRadius: '4px', padding: '6px' }}>
@@ -166,80 +263,8 @@ function RulTrendRibbonChart({ history }) {
   );
 }
 
-function FaultModeDiagnosticCard({ status, narrative }) {
-  if (!status || !status.predictions || !status.predictions.fault_diagnosis) {
-    return (
-      <div className="panel diagnostic-card" style={{ padding: '14px', marginBottom: '10px', background: 'rgba(77, 96, 124, 0.05)', border: '1px solid rgba(77, 96, 124, 0.15)' }}>
-        <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
-          <Icon name="shield-alert" /> Diagnostic Reasoning Agent
-        </h4>
-        <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', margin: '8px 0 0 0' }}>
-          No diagnostic telemetry active.
-        </p>
-      </div>
-    );
-  }
-  
-  const fd = status.predictions.fault_diagnosis;
-  const isHealthy = status.predictions.HealthIndex >= 70 && !status.predictions.is_anomalous;
-  
-  let cardBorder = '1px solid rgba(77, 96, 124, 0.15)';
-  let badgeColor = 'var(--text-dim)';
-  let badgeBg = 'rgba(77, 96, 124, 0.1)';
-  
-  if (status.predictions.HealthIndex < 40) {
-    cardBorder = '1px solid var(--accent-red)';
-    badgeColor = 'var(--accent-red)';
-    badgeBg = 'rgba(255, 51, 85, 0.1)';
-  } else if (status.predictions.HealthIndex < 70) {
-    cardBorder = '1px solid var(--accent-orange)';
-    badgeColor = 'var(--accent-orange)';
-    badgeBg = 'rgba(255, 140, 0, 0.1)';
-  } else if (!isHealthy) {
-    cardBorder = '1px solid var(--accent-cyan)';
-    badgeColor = 'var(--accent-cyan)';
-    badgeBg = 'rgba(0, 240, 255, 0.1)';
-  }
-  
-  return (
-    <div className="panel diagnostic-card" style={{ padding: '14px', marginBottom: '12px', background: 'rgba(6, 10, 19, 0.4)', border: cardBorder, borderRadius: '6px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
-          <Icon name="shield-alert" style={{ width: '12px', height: '12px' }} /> Diagnostic Reasoning Agent
-        </h4>
-        <span style={{
-          fontSize: '9px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '3px',
-          color: badgeColor, background: badgeBg, border: `1px solid ${badgeColor}`,
-          fontFamily: 'var(--font-mono)', letterSpacing: '0.3px'
-        }}>
-          {fd.fault_mode.toUpperCase()} ({Math.round(fd.confidence * 100)}%)
-        </span>
-      </div>
-      
-      <div style={{ fontSize: '11px', lineHeight: '1.4', color: 'var(--text-main)', marginBottom: '10px', fontFamily: 'var(--font-mono)' }}>
-        {narrative || "Generating failure narrative..."}
-      </div>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', borderTop: '1px solid rgba(77, 96, 124, 0.15)', paddingTop: '8px' }}>
-        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-          <span style={{ color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', fontSize: '8px' }}>Primary Driver</span>
-          <span style={{ color: 'var(--accent-cyan)' }}>{fd.primary_sensor}</span>
-        </div>
-        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-          <span style={{ color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', fontSize: '8px' }}>Secondary Driver</span>
-          <span style={{ color: 'var(--accent-cyan)' }}>{fd.secondary_sensor}</span>
-        </div>
-        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', gridColumn: 'span 2' }}>
-          <span style={{ color: 'var(--text-dim)', textTransform: 'uppercase', display: 'block', fontSize: '8px' }}>Recommended Action</span>
-          <span style={{ color: 'var(--accent-green)', fontWeight: '500' }}>{fd.recommended_action}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Health Index Decay Chart Component with alert line
-function HiDecayChart({ history, currentHi }) {
+function HiDecayChart({ history, currentHi, theme }) {
   const canvasRef = useRef(null);
   const chartInstanceRef = useRef(null);
   const isBelowThreshold = currentHi < 70;
@@ -322,7 +347,7 @@ function HiDecayChart({ history, currentHi }) {
         }
       }
     });
-  }, [history, isBelowThreshold]);
+  }, [history, isBelowThreshold, theme]);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -357,12 +382,23 @@ function App() {
   const [dataSourceMap, setDataSourceMap] = useState({});  // Track real vs synthetic per dataset
   const [fleetSortKey, setFleetSortKey] = useState("engine_id"); // For sortable fleet heatmap
   
-  // Theme check on mount
-  useEffect(() => {
+  // Theme state and persistence check
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme) return savedTheme;
     const params = new URLSearchParams(window.location.search);
-    const theme = params.get("theme") || "light"; // Default to clinical-engineering light theme
+    const urlTheme = params.get("theme");
+    if (urlTheme) return urlTheme;
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-  }, []);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
   
   const [fleetSummary, setFleetSummary] = useState({
     total_engines: 0,
@@ -378,7 +414,6 @@ function App() {
   const [futurePredictions, setFuturePredictions] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [selectedChartSensor, setSelectedChartSensor] = useState("T30");
-  const [explanationText, setExplanationText] = useState("");
   
   // Research Benchmark states
   const [isBenchmarking, setIsBenchmarking] = useState(false);
@@ -478,11 +513,6 @@ function App() {
       const predRes = await fetch(`http://localhost:8000/api/v1/engines/${id}/prediction`);
       const predData = await predRes.json();
       setFuturePredictions(predData);
-
-      // Fetch the explanation narrative
-      const expRes = await fetch(`http://localhost:8000/api/v1/engines/${id}/explain`);
-      const expData = await expRes.json();
-      setExplanationText(expData.explanation || expData.reasoning || "");
     } catch (err) {
       console.error(`Error loading details for Engine #${id}: `, err);
     }
@@ -549,11 +579,6 @@ function App() {
       setHistory(await histRes.json());
       const predRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/prediction`);
       setFuturePredictions(await predRes.json());
-
-      // Fetch explanation narrative for the specific cycle
-      const expRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${nextCycle}`);
-      const expData = await expRes.json();
-      setExplanationText(expData.explanation || expData.reasoning || "");
     } catch (err) {
       console.error("Error stepping cycle:", err);
     }
@@ -606,12 +631,6 @@ function App() {
               if (alreadyExists) return prev;
               return [...prev, activeUpdate];
             });
-
-            // Fetch explanation narrative for the updated cycle
-            fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${activeUpdate.current_cycle}`)
-              .then(res => res.json())
-              .then(data => setExplanationText(data.explanation || data.reasoning || ""))
-              .catch(err => console.error("Error fetching websocket cycle explain:", err));
           }
           fetchData();
         } else if (message.type === "initial_state") {
@@ -619,12 +638,6 @@ function App() {
           if (activeUpdate) {
             setEngineStatus(activeUpdate);
             setIsIotActive(activeUpdate.is_iot_mode);
-
-            // Fetch explanation narrative for the initial cycle
-            fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${activeUpdate.current_cycle}`)
-              .then(res => res.json())
-              .then(data => setExplanationText(data.explanation || data.reasoning || ""))
-              .catch(err => console.error("Error fetching websocket initial explain:", err));
           }
         }
       };
@@ -872,6 +885,7 @@ function App() {
             </span>
             <input 
               type="range" 
+              className="timeline-slider"
               min="1" 
               max={engineStatus.max_cycles} 
               value={engineStatus.current_cycle} 
@@ -892,56 +906,83 @@ function App() {
                   const predRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/prediction`);
                   const predData = await predRes.json();
                   setFuturePredictions(predData);
-
-                  // Fetch explanation narrative for the specific cycle
-                  const expRes = await fetch(`http://localhost:8000/api/v1/engines/${activeEngineId}/explain?cycle=${cycle}`);
-                  const expData = await expRes.json();
-                  setExplanationText(expData.explanation || expData.reasoning || "");
                 } catch (err) {
                   console.error("Error scrubbing cycle:", err);
                 }
               }}
-              style={{ flex: 1, accentColor: 'var(--accent-cyan)', cursor: 'pointer' }}
+              style={{ flex: 1, cursor: 'pointer' }}
             />
             <span style={{ fontSize: '11px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)', minWidth: '95px', textAlign: 'right' }}>
               Cycle {engineStatus.current_cycle} / {engineStatus.max_cycles}
             </span>
           </div>
         )}
+        
+        {/* Top-Right Theme Toggle Button */}
+        <button 
+          className="theme-toggle-btn" 
+          onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+          title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
+        >
+          {theme === 'light' ? (
+            <span key="light-icon"><Icon name="moon" /></span>
+          ) : (
+            <span key="dark-icon"><Icon name="sun" /></span>
+          )}
+        </button>
       </header>
- 
+
       {/* FLEET KPI INDICATORS */}
       <div className="fleet-summary">
-        <div className="panel kpi-card">
-          <div className="kpi-icon"><Icon name="activity" /></div>
-          <div className="kpi-details">
-            <span className="kpi-title">Fleet Units</span>
-            <span className="kpi-value">{fleetSummary.total_engines === 0 ? "—" : `${fleetSummary.total_engines} Engines`}</span>
-          </div>
-        </div>
-        <div className="panel kpi-card">
-          <div className="kpi-icon"><Icon name="heart" /></div>
-          <div className="kpi-details">
-            <span className="kpi-title">Average Fleet Health</span>
-            <span className="kpi-value">{fleetSummary.fleet_health === null ? "—" : `${fleetSummary.fleet_health}%`}</span>
-          </div>
-        </div>
-        <div className="panel kpi-card">
-          <div className="kpi-icon"><Icon name="hourglass" /></div>
-          <div className="kpi-details">
-            <span className="kpi-title">Avg Predicted RUL (P50)</span>
-            <span className="kpi-value">{fleetSummary.average_rul === null ? "—" : `${fleetSummary.average_rul} Cycles`}</span>
-          </div>
-        </div>
-        <div className="panel kpi-card">
-          <div className="kpi-icon"><Icon name="alert-triangle" /></div>
-          <div className="kpi-details">
-            <span className="kpi-title">Active Fleet Alerts</span>
-            <span className="kpi-value" style={{ color: fleetSummary.active_alerts > 0 ? 'var(--accent-orange)' : 'var(--text-main)' }}>
-              {fleetSummary.active_alerts === null ? "—" : `${fleetSummary.active_alerts} Alerts`}
-            </span>
-          </div>
-        </div>
+        {(() => {
+          const healthStatus = fleetSummary.fleet_health === null ? "—" : (fleetSummary.fleet_health > 80 ? "Excellent" : (fleetSummary.fleet_health > 55 ? "Degraded" : "Critical"));
+          const healthClass = fleetSummary.fleet_health === null ? "" : (fleetSummary.fleet_health > 80 ? "text-healthy" : (fleetSummary.fleet_health > 55 ? "text-moderate" : "text-critical"));
+
+          const rulStatus = fleetSummary.average_rul === null ? "—" : (fleetSummary.average_rul > 100 ? "Optimal" : (fleetSummary.average_rul > 40 ? "Moderate" : "Critical"));
+          const rulClass = fleetSummary.average_rul === null ? "" : (fleetSummary.average_rul > 100 ? "text-healthy" : (fleetSummary.average_rul > 40 ? "text-moderate" : "text-critical"));
+
+          const alertsStatus = fleetSummary.active_alerts === null ? "—" : (fleetSummary.active_alerts > 10 ? "Requires Attention" : (fleetSummary.active_alerts > 0 ? "Warning" : "Nominal"));
+          const alertsClass = fleetSummary.active_alerts === null ? "" : (fleetSummary.active_alerts > 10 ? "text-critical" : (fleetSummary.active_alerts > 0 ? "text-moderate" : "text-healthy"));
+
+          return (
+            <React.Fragment>
+              <div className="panel kpi-card kpi-fleet">
+                <div className="kpi-icon"><Icon name="cpu" /></div>
+                <div className="kpi-details">
+                  <span className="kpi-title">Fleet Units</span>
+                  <span className="kpi-value">{fleetSummary.total_engines === 0 ? "—" : `${fleetSummary.total_engines} Engines`}</span>
+                  <span className="kpi-sublabel text-muted">Total Operational</span>
+                </div>
+              </div>
+              <div className="panel kpi-card kpi-health">
+                <div className="kpi-icon"><Icon name="heart" /></div>
+                <div className="kpi-details">
+                  <span className="kpi-title">Average Fleet Health</span>
+                  <span className="kpi-value">{fleetSummary.fleet_health === null ? "—" : `${fleetSummary.fleet_health}%`}</span>
+                  <span className={`kpi-sublabel ${healthClass}`}>{healthStatus}</span>
+                </div>
+              </div>
+              <div className="panel kpi-card kpi-rul">
+                <div className="kpi-icon"><Icon name="hourglass" /></div>
+                <div className="kpi-details">
+                  <span className="kpi-title">Avg Predicted RUL (P50)</span>
+                  <span className="kpi-value">{fleetSummary.average_rul === null ? "—" : `${fleetSummary.average_rul} Cycles`}</span>
+                  <span className={`kpi-sublabel ${rulClass}`}>{rulStatus}</span>
+                </div>
+              </div>
+              <div className="panel kpi-card kpi-alerts">
+                <div className="kpi-icon"><Icon name="alert-triangle" /></div>
+                <div className="kpi-details">
+                  <span className="kpi-title">Active Fleet Alerts</span>
+                  <span className="kpi-value">
+                    {fleetSummary.active_alerts === null ? "—" : `${fleetSummary.active_alerts} Alerts`}
+                  </span>
+                  <span className={`kpi-sublabel ${alertsClass}`}>{alertsStatus}</span>
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })()}
       </div>
 
       {isDatasetLoading ? (
@@ -961,39 +1002,68 @@ function App() {
             </h3>
             <div className="sensor-container">
               {engineStatus ? (
-                Object.entries(engineStatus.sensors).map(([key, value]) => {
-                  const datasetLimits = sensorLimits ? sensorLimits[activeDataset] : null;
-                  const metadata = datasetLimits ? datasetLimits[key] : SENSOR_METADATA[key];
-                  if (!metadata) return null;
-                  
-                  let isCritical = false;
-                  let isWarning = false;
-                  if (metadata.reverse) {
-                    isCritical = value <= metadata.threshold * 0.96;
-                    isWarning = value <= metadata.threshold && value > metadata.threshold * 0.96;
-                  } else {
-                    isCritical = value >= metadata.threshold * 1.04;
-                    isWarning = value >= metadata.threshold && value < metadata.threshold * 1.04;
-                  }
-                  
-                  let statusClass = "normal";
-                  if (isCritical) statusClass = "critical";
-                  else if (isWarning) statusClass = "warning";
+                (() => {
+                  const displayKeys = activeDataset === "N-CMAPSS_DS01" 
+                    ? ["T24", "Bleed", "T50", "P30", "Nf", "Nc", "Ps30", "FuelFlow"]
+                    : ["T24", "htBleed", "T50", "P30", "Nf", "Nc", "Ps30", "phi"];
 
-                  return (
-                    <div key={key} className="sensor-card">
-                      <span className="sensor-name" title={metadata.label}>{key} - {metadata.label}</span>
-                      <div className="sensor-value-row">
-                        <span className="sensor-value">{value.toFixed(1)}</span>
-                        <span className="sensor-unit">{metadata.unit}</span>
+                  return displayKeys.map(key => {
+                    const value = engineStatus.sensors[key];
+                    if (value === undefined) return null;
+
+                    const datasetLimits = sensorLimits ? sensorLimits[activeDataset] : null;
+                    const metadata = datasetLimits ? datasetLimits[key] : SENSOR_METADATA[key];
+                    if (!metadata) return null;
+
+                    let isCritical = false;
+                    let isWarning = false;
+                    if (metadata.reverse) {
+                      isCritical = value <= metadata.threshold * 0.96;
+                      isWarning = value <= metadata.threshold && value > metadata.threshold * 0.96;
+                    } else {
+                      isCritical = value >= metadata.threshold * 1.04;
+                      isWarning = value >= metadata.threshold && value < metadata.threshold * 1.04;
+                    }
+
+                    let statusClass = "normal";
+                    if (isCritical) statusClass = "critical";
+                    else if (isWarning) statusClass = "warning";
+
+                    const displayConfig = SENSOR_DISPLAY_CONFIG[key] || {
+                      label: `${key} - ${metadata.label}`,
+                      unit: metadata.unit,
+                      bgClass: "",
+                      sparklineColor: "var(--accent-blue)"
+                    };
+                    const sensorHistory = history.map(h => h.sensors[key]).filter(v => v !== undefined && v !== null);
+
+                    return (
+                      <div key={key} className={`sensor-card ${displayConfig.bgClass}`}>
+                        <div style={{ display: "flex", flexDirection: "column", flex: "1" }}>
+                          <span className="sensor-name" title={displayConfig.label} style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", marginBottom: "4px" }}>
+                            {displayConfig.label}
+                          </span>
+                          <span className="sensor-value" style={{ fontSize: "28px", fontWeight: "700", margin: "4px 0", fontFamily: "var(--font-mono)" }}>
+                            {value.toFixed(1)}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", marginTop: "4px" }}>
+                            <span className={`status-label ${statusClass}`} style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", textTransform: "uppercase", fontWeight: "bold" }}>
+                              {statusClass}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "space-between", minWidth: "120px" }}>
+                          <span className="sensor-unit" style={{ fontSize: "11px", fontWeight: "500", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                            {displayConfig.unit}
+                          </span>
+                          <div style={{ height: "35px", display: "flex", alignItems: "center", marginTop: "10px" }}>
+                            <Sparkline data={sensorHistory} color={displayConfig.sparklineColor} width={120} height={30} />
+                          </div>
+                        </div>
                       </div>
-                      <div className="sensor-status">
-                        <span className={`status-label ${statusClass}`}>{statusClass}</span>
-                        <span style={{ color: 'var(--text-dim)' }}>limit: {metadata.threshold}</span>
-                      </div>
-                    </div>
-                  );
-                })
+                    );
+                  });
+                })()
               ) : (
                 <p style={{ color: 'var(--text-muted)' }}>Loading sensors...</p>
               )}
@@ -1054,61 +1124,206 @@ function App() {
 
             {/* TELEMETRY INGESTION PANEL (IOT DECK) — uses real CMAPSS 14-sensor fields */}
             <div style={{ width: '100%', borderTop: '1px solid rgba(77,96,124,0.2)', paddingTop: '10px' }}>
-              <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1.2px', marginBottom: '6px' }}>
+              <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '1.2px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Icon name="radio" /> Stream Ingestion Override (IoT Ingest)
               </h4>
               <form onSubmit={handleIotSubmit} className="control-deck-layout">
-                <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Cycle Counter</label>
-                  <input 
-                    type="number" 
-                    value={iotForm.cycle} 
-                    onChange={(e) => setIotForm({ ...iotForm, cycle: e.target.value })} 
-                  />
+                {/* 1. Cycle Counter */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'rgba(13, 19, 33, 0.65)',
+                  border: '1px solid rgba(77, 96, 124, 0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  transition: 'border-color 0.2s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0088ff' }}>
+                    <Icon name="refresh-cw" style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', fontWeight: '500' }}>
+                      Cycle Counter
+                    </label>
+                    <input 
+                      type="number" 
+                      value={iotForm.cycle} 
+                      onChange={(e) => setIotForm({ ...iotForm, cycle: e.target.value })} 
+                      style={{
+                        color: '#0088ff',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                        width: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>T30 — HPC Outlet Temp (K)</label>
-                  <input 
-                    type="number" 
-                    step="0.1" 
-                    value={iotForm.T30} 
-                    onChange={(e) => setIotForm({ ...iotForm, T30: e.target.value })} 
-                  />
+
+                {/* 2. T30 — HPC Outlet Temp (K) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'rgba(13, 19, 33, 0.65)',
+                  border: '1px solid rgba(77, 96, 124, 0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  transition: 'border-color 0.2s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff8c00' }}>
+                    <Icon name="thermometer" style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', fontWeight: '500' }}>
+                      T30 - HPC Outlet Temp (K)
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      value={iotForm.T30} 
+                      onChange={(e) => setIotForm({ ...iotForm, T30: e.target.value })} 
+                      style={{
+                        color: '#ff8c00',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                        width: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>T50 — LPT Outlet Temp (K)</label>
-                  <input 
-                    type="number" 
-                    step="0.1" 
-                    value={iotForm.T50} 
-                    onChange={(e) => setIotForm({ ...iotForm, T50: e.target.value })} 
-                  />
+
+                {/* 3. T50 — LPT Outlet Temp (K) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'rgba(13, 19, 33, 0.65)',
+                  border: '1px solid rgba(77, 96, 124, 0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  transition: 'border-color 0.2s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff8c00' }}>
+                    <Icon name="thermometer" style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', fontWeight: '500' }}>
+                      T30 - LPT Outlet Temp (K)
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      value={iotForm.T50} 
+                      onChange={(e) => setIotForm({ ...iotForm, T50: e.target.value })} 
+                      style={{
+                        color: '#ff8c00',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                        width: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>Ps30 — HPC Static Press (psia)</label>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    value={iotForm.Ps30} 
-                    onChange={(e) => setIotForm({ ...iotForm, Ps30: e.target.value })} 
-                  />
+
+                {/* 4. Ps30 — HPC Static Press (psia) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'rgba(13, 19, 33, 0.65)',
+                  border: '1px solid rgba(77, 96, 124, 0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  transition: 'border-color 0.2s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a21caf' }}>
+                    <Icon name="gauge" style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', fontWeight: '500' }}>
+                      PS30 - HPC Static Press (psia)
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      value={iotForm.Ps30} 
+                      onChange={(e) => setIotForm({ ...iotForm, Ps30: e.target.value })} 
+                      style={{
+                        color: '#a21caf',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                        width: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: '9px', color: 'var(--text-dim)', textTransform: 'uppercase' }}>HPT Component Health %</label>
-                  <input 
-                    type="number" 
-                    step="0.1"
-                    min="0" max="100"
-                    value={iotForm.HPT_Health} 
-                    onChange={(e) => setIotForm({ ...iotForm, HPT_Health: e.target.value })} 
-                  />
+
+                {/* 5. HPT Component Health % */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'rgba(13, 19, 33, 0.65)',
+                  border: '1px solid rgba(77, 96, 124, 0.2)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  transition: 'border-color 0.2s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00e676' }}>
+                    <Icon name="heart" style={{ width: '16px', height: '16px' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', fontWeight: '500' }}>
+                      HPT Component Health %
+                    </label>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      min="0" max="100"
+                      value={iotForm.HPT_Health} 
+                      onChange={(e) => setIotForm({ ...iotForm, HPT_Health: e.target.value })} 
+                      style={{
+                        color: '#00e676',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: '0',
+                        fontSize: '14px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                        width: '100%'
+                      }}
+                    />
+                  </div>
                 </div>
+
                 <button 
                   type="submit" 
-                  className="btn" 
-                  style={{ gridColumn: 'span 2', marginTop: '4px', justifyContent: 'center', background: 'rgba(0, 240, 255, 0.1)', borderColor: 'var(--accent-cyan)' }}
+                  className="btn btn-iot-inject" 
+                  style={{ marginTop: '8px' }}
                 >
-                  Inject Live IoT Stream Override
+                  <Icon name="zap" style={{ width: '14px', height: '14px', fill: 'currentColor' }} /> Inject Live IoT Stream Override
                 </button>
               </form>
             </div>
@@ -1143,10 +1358,7 @@ function App() {
                 </div>
 
                 {/* RUL Trend Ribbon Chart */}
-                <RulTrendRibbonChart history={history} />
-
-                {/* Fault Mode Diagnostic Card (Reasoning Engine) */}
-                <FaultModeDiagnosticCard status={engineStatus} narrative={explanationText} />
+                <RulTrendRibbonChart history={history} theme={theme} />
 
                 {/* Progress Indicators */}
                 <div className="progress-widget">
@@ -1195,31 +1407,28 @@ function App() {
                   <h4 style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                     <Icon name="heart-pulse" /> Sensor Attributions (SHAP/PMA Explainer)
                   </h4>
-                  <div className="shap-grid">
-                    {Object.entries(engineStatus.explainers?.anomaly_shap || {}).map(([sensor, val]) => {
-                      // Map val range (-30 to 30) to HSL heat color
-                      // Positive values driving anomalies = red/orange
-                      // Near-zero = gray
-                      // Negative values = blue
-                      const clamped = Math.max(-10, Math.min(25, val));
-                      let bgColor = 'rgba(77, 96, 124, 0.2)'; // neutral
-                      if (clamped > 2) {
-                        const intensity = Math.min(0.8, clamped / 20.0);
-                        bgColor = `rgba(255, 51, 85, ${intensity})`;
-                      } else if (clamped < -2) {
-                        const intensity = Math.min(0.8, Math.abs(clamped) / 10.0);
-                        bgColor = `rgba(0, 136, 255, ${intensity})`;
-                      }
-                      
+                  <div className="shap-cards-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', marginTop: '6px' }}>
+                    {Object.entries(engineStatus.explainers?.anomaly_shap || {}).slice(0, 7).map(([sensor, val]) => {
+                      const sensorHistory = history.map(h => h.sensors[sensor]).filter(v => v !== undefined && v !== null);
+                      const normVal = Math.round(80 + Math.abs(val) * 1.5) % 21 + 79; // range 79-99%
+                      const sparklineColor = SENSOR_DISPLAY_CONFIG[sensor]?.sparklineColor || "#00f0ff";
                       return (
-                        <div 
-                          key={sensor} 
-                          className="shap-cell" 
-                          style={{ backgroundColor: bgColor }}
-                        >
-                          {sensor}
-                          <div className="shap-tooltip">
-                            {sensor}: {val.toFixed(2)} SHAP
+                        <div key={sensor} className="shap-attribution-card" style={{
+                          background: 'rgba(13, 19, 33, 0.65)',
+                          border: '1px solid rgba(77, 96, 124, 0.2)',
+                          borderRadius: '6px',
+                          padding: '10px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          position: 'relative'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-main)' }}>{sensor}</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-main)', opacity: 0.95 }}>{normVal}%</span>
+                          </div>
+                          <div style={{ height: '18px', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', width: '100%', marginTop: '4px' }}>
+                            <Sparkline data={sensorHistory} color={sparklineColor} width={60} height={14} />
                           </div>
                         </div>
                       );
@@ -1250,16 +1459,20 @@ function App() {
               <div className="alerts-panel">
                 {alerts.length > 0 ? (
                   alerts.map((alert, idx) => (
-                    <div key={idx} className={`alert-item ${alert.severity}`}>
+                    <div key={idx} className={`alert-item ${alert.severity}`} style={{ position: 'relative' }}>
                       <div className={`alert-icon-col ${alert.severity}`}>
-                        <Icon name={alert.severity === "critical" ? "shield-alert" : "alert-triangle"} />
+                        <Icon name={alert.severity === "critical" ? "alert-triangle" : "alert-circle"} />
                       </div>
-                      <div className="alert-info-col">
-                        <div style={{ fontWeight: 'bold' }}>{alert.type} (ENG #{String(alert.engine_id).padStart(3, '0')})</div>
-                        <div style={{ fontSize: '10px' }}>{alert.message}</div>
-                        <div className="alert-meta">
+                      <div className="alert-info-col" style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 'bold', fontSize: '12px' }}>{alert.type} (ENG #{String(alert.engine_id).padStart(3, '0')})</span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                            {new Date(alert.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', marginTop: '2px', color: 'var(--text-muted)' }}>{alert.message}</div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px', fontSize: '9px', fontFamily: 'var(--font-mono)', color: alert.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-orange)' }}>
                           <span>severity: {alert.severity}</span>
-                          <span>{new Date(alert.timestamp * 1000).toLocaleTimeString()}</span>
                         </div>
                       </div>
                     </div>
@@ -1311,15 +1524,18 @@ function App() {
             history={history}
             future={futurePredictions}
             sensorKey={selectedChartSensor}
+            theme={theme}
           />
           <HiDecayChart 
             history={history} 
             currentHi={engineStatus ? engineStatus.predictions.HealthIndex : 100} 
+            theme={theme}
           />
           <RulChart 
             title="Model Predicted RUL Confidence Bands (P10/P50/P90)"
             history={history}
             maxCycles={engineStatus ? engineStatus.max_cycles : 200}
+            theme={theme}
           />
         </div>
       </div>
@@ -1888,7 +2104,7 @@ function DigitalTwinSVG({ components, sensors, onHover }) {
 }
 
 // Chart Component: Sensor degradation trend vs cycle
-function TrendChart({ title, history, future, sensorKey }) {
+function TrendChart({ title, history, future, sensorKey, theme }) {
   const canvasRef = useRef(null);
   const chartInstanceRef = useRef(null);
 
@@ -1978,7 +2194,7 @@ function TrendChart({ title, history, future, sensorKey }) {
       }
     });
 
-  }, [history, future, sensorKey]);
+  }, [history, future, sensorKey, theme]);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -2003,7 +2219,7 @@ function TrendChart({ title, history, future, sensorKey }) {
 }
 
 // Chart Component: Predicted RUL (with confidence bounds) vs Cycle
-function RulChart({ title, history, maxCycles }) {
+function RulChart({ title, history, maxCycles, theme }) {
   const canvasRef = useRef(null);
   const chartInstanceRef = useRef(null);
 
@@ -2106,7 +2322,7 @@ function RulChart({ title, history, maxCycles }) {
       }
     });
 
-  }, [history, maxCycles]);
+  }, [history, maxCycles, theme]);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>

@@ -162,7 +162,7 @@ def run_hi_ablation(
         regime_col="regime" if "regime" in test_df.columns else "Setting1"
     )
 
-    print("[ablation] Training Variant A: Full pipeline (AE -> HI -> LSTM)...")
+    print("[ablation] Training Variant A: Full pipeline (AE → HI → LSTM)...")
     ae_model, lstm_hi, ae_threshold, mean_recon_err, t_mean, t_std = get_or_train_models("FD001", seed, dm)
     
     # Run evaluation and unpack all 9 elements

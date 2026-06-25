@@ -104,9 +104,7 @@ class DatasetManager:
         
         with h5py.File(h5_path, 'r') as f:
             W = np.array(f['W_dev']) # Settings
-            Xs = np.array(f['X_s_dev']) # 14 physical sensors
-            Xv = np.array(f['X_v_dev']) # 14 virtual health sensors
-            X = np.concatenate([Xs, Xv], axis=1) # shape: (N, 28)
+            X = np.array(f['X_s_dev']) # Sensors
             Y = np.array(f['Y_dev']) # RUL
             
             data = {}
@@ -146,13 +144,6 @@ class DatasetManager:
 
     def generate_synthetic_dataset(self, dataset_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Generates high-fidelity simulated telemetry datasets mimicking the reality gap without leakage."""
-        import random as py_random
-        import hashlib
-        # Seed local random generators to ensure reproducibility of synthetic datasets
-        seed_val = int(hashlib.md5(dataset_name.encode('utf-8')).hexdigest(), 16) % 100000000
-        state_random = py_random.Random(seed_val)
-        np_rng = np.random.default_rng(seed_val)
-
         num_engines = 15 if dataset_name.startswith("FD") else 5
         train_records = []
         test_records = []
@@ -171,11 +162,11 @@ class DatasetManager:
 
         for is_train, records_list in [(True, train_records), (False, test_records)]:
             for engine_id in range(1, num_engines + 1):
-                max_cycles = state_random.randint(140, 260)
-                alpha = state_random.uniform(1.5, 2.5)
+                max_cycles = random.randint(140, 260)
+                alpha = random.uniform(1.5, 2.5)
                 
                 fault_mode = "HPC"
-                if has_two_faults and state_random.random() > 0.5:
+                if has_two_faults and random.random() > 0.5:
                     fault_mode = "Fan"
                 
                 baselines = {
@@ -195,7 +186,7 @@ class DatasetManager:
                     shift = {}
                     for s in sensor_list:
                         if s in ["alt", "Mach", "TRA", "T30", "T50", "Nf", "Nc", "Ps30"]:
-                            shift[s] = state_random.uniform(-0.15, 0.15) * baselines.get(s, 1.0)
+                            shift[s] = random.uniform(-0.15, 0.15) * baselines.get(s, 1.0)
                         else:
                             shift[s] = 0.0
                     regime_shifts.append(shift)
@@ -256,14 +247,14 @@ class DatasetManager:
                                 delta = -base * 0.025 * (ratio ** alpha)
                                 
                         noise_std = base * 0.002
-                        noise = np_rng.normal(0, noise_std)
+                        noise = np.random.normal(0, noise_std)
                         
                         row[s] = round(base + shift + delta + noise, 4)
                         
                     if is_ncmapss:
                         for s in sensor_list:
                             if s.startswith("AuxSensor"):
-                                row[s] = round(state_random.gauss(10, 1) + 2 * ratio, 4)
+                                row[s] = round(random.gauss(10, 1) + 2 * ratio, 4)
                                 
                     records_list.append(row)
                     
